@@ -33,6 +33,13 @@ class MainScene extends Phaser.Scene {
   health = 100;
   maxHealth = 100;    constructor() {
       super('MainScene');
+  // World sizing (~20% smaller than previous 480x352): now 384x288, HUD band is twice as tall (64px)
+  this.gridCellSize = 16;
+  this.worldPixelWidth = 384;   // 24 cells
+  this.worldPixelHeight = 288;  // 18 cells
+  this.hudHeight = 64;          // reserved HUD band height
+    // Shared radius for edge gaps (1 => 3 tiles wide/high)
+    this.edgeGapRadius = 1;
       this.currentMap = 'overworld_01'; // Use string IDs instead of indices
       // Transition lock to avoid instant re-trigger on doors
       this.transitionLock = false;
@@ -127,14 +134,23 @@ class MainScene extends Phaser.Scene {
     // Grid-based placement system for environment objects
     initializeGrid() {
       // Create a grid system - 20x15 grid for 320x240 world (16px per cell)
-      this.gridWidth = 20;
-      this.gridHeight = 15;
-      this.gridCellSize = 16;
+      this.gridWidth = Math.floor(this.worldPixelWidth / this.gridCellSize);
+      this.gridHeight = Math.floor(this.worldPixelHeight / this.gridCellSize);
+      // this.gridCellSize already set in constructor
       this.occupiedCells = new Set();
       
       // Debug grid visualization
       this.gridVisible = false;
       this.gridLines = null;
+    }
+
+    // Returns true if the index lies within any gap defined by skipSet with the configured radius
+    isInEdgeGap(index, skipSet) {
+      const r = this.edgeGapRadius ?? 1;
+      for (let i = -r; i <= r; i++) {
+        if (skipSet.has(index + i)) return true;
+      }
+      return false;
     }
 
     isGridCellAvailable(gridX, gridY) {
@@ -383,10 +399,13 @@ class MainScene extends Phaser.Scene {
       if (!this.stumps) this.stumps = this.add.group();
       if (!this.buildingWalls) this.buildingWalls = this.add.group();
 
-      // Create boundary rocks based on current map exits/doors
+  // Create boundary rocks based on current map exits/doors
       const currentMapData = this.maps[this.currentMap];
       const isShop = currentMapData.type === 'shop';
       const isDungeon = currentMapData.type === 'dungeon';
+  const cs = this.gridCellSize;
+  const W = this.worldPixelWidth;
+  const H = this.worldPixelHeight;
 
       // Compute wall gaps for edge exits (allow multiple per side)
       const mapDoors = this.doorRegistry[this.currentMap] || {};
@@ -412,24 +431,24 @@ class MainScene extends Phaser.Scene {
       }
 
       // Top boundary rocks
-      for (let x = 0; x < 320; x += 16) {
-        const gx = Math.floor(x / 16);
-        if (skipTopXs.has(gx) || skipTopXs.has(gx - 1) || skipTopXs.has(gx + 1)) {
+      for (let x = 0; x < W; x += cs) {
+        const gx = Math.floor(x / cs);
+        if (this.isInEdgeGap(gx, skipTopXs)) {
           continue; // leave a gap for top edge door(s)
         }
         if (isShop) {
-          const rock1 = this.add.rectangle(x + 8, 8, 16, 16, 0x666666);
+          const rock1 = this.add.rectangle(x + cs/2, cs/2, cs, cs, 0x666666);
           this.physics.add.existing(rock1);
           rock1.body.setImmovable(true);
           this.boundaryRocks.add(rock1);
           if (this.worldLayer) this.worldLayer.add(rock1);
-          const rock2 = this.add.rectangle(x + 8, 24, 16, 16, 0x666666);
+          const rock2 = this.add.rectangle(x + cs/2, cs + cs/2, cs, cs, 0x666666);
           this.physics.add.existing(rock2);
           rock2.body.setImmovable(true);
           this.boundaryRocks.add(rock2);
           if (this.worldLayer) this.worldLayer.add(rock2);
         } else {
-          const rock = this.add.rectangle(x + 8, 8, 16, 16, 0x666666);
+          const rock = this.add.rectangle(x + cs/2, cs/2, cs, cs, 0x666666);
           this.physics.add.existing(rock);
           rock.body.setImmovable(true);
           this.boundaryRocks.add(rock);
@@ -438,26 +457,26 @@ class MainScene extends Phaser.Scene {
       }
       
       // Bottom boundary rocks
-      for (let x = 0; x < 320; x += 16) {
-        const gx = Math.floor(x / 16);
-        if (skipBottomXs.has(gx) || skipBottomXs.has(gx - 1) || skipBottomXs.has(gx + 1)) {
+      for (let x = 0; x < W; x += cs) {
+        const gx = Math.floor(x / cs);
+        if (this.isInEdgeGap(gx, skipBottomXs)) {
           continue; // leave a gap for bottom edge door(s)
         }
         if (isShop) {
           // Double thickness for shop
-          const rock1 = this.add.rectangle(x + 8, 216, 16, 16, 0x666666);
+          const rock1 = this.add.rectangle(x + cs/2, H - (cs + cs/2), cs, cs, 0x666666);
           this.physics.add.existing(rock1);
           rock1.body.setImmovable(true);
           this.boundaryRocks.add(rock1);
           if (this.worldLayer) this.worldLayer.add(rock1);
 
-          const rock2 = this.add.rectangle(x + 8, 232, 16, 16, 0x666666);
+          const rock2 = this.add.rectangle(x + cs/2, H - cs/2, cs, cs, 0x666666);
           this.physics.add.existing(rock2);
           rock2.body.setImmovable(true);
           this.boundaryRocks.add(rock2);
           if (this.worldLayer) this.worldLayer.add(rock2);
         } else {
-          const rock = this.add.rectangle(x + 8, 232, 16, 16, 0x666666);
+          const rock = this.add.rectangle(x + cs/2, H - cs/2, cs, cs, 0x666666);
           this.physics.add.existing(rock);
           rock.body.setImmovable(true);
           this.boundaryRocks.add(rock);
@@ -466,26 +485,26 @@ class MainScene extends Phaser.Scene {
       }
       
       // Left boundary rocks (allow specific gaps instead of removing entire side)
-      for (let y = 16; y < 224; y += 16) {
-        const gy = Math.floor((y - 8) / 16);
-        if (skipLeftYs.has(gy) || skipLeftYs.has(gy - 1) || skipLeftYs.has(gy + 1)) {
+      for (let y = cs; y < H - cs; y += cs) {
+        const gy = Math.floor((y - cs/2) / cs);
+        if (this.isInEdgeGap(gy, skipLeftYs)) {
           continue; // gap for left edge door(s)
         }
         if (isShop) {
           // Double thickness for shop
-          const rock1 = this.add.rectangle(8, y + 8, 16, 16, 0x666666);
+          const rock1 = this.add.rectangle(cs/2, y + cs/2, cs, cs, 0x666666);
           this.physics.add.existing(rock1);
           rock1.body.setImmovable(true);
           this.boundaryRocks.add(rock1);
           if (this.worldLayer) this.worldLayer.add(rock1);
 
-          const rock2 = this.add.rectangle(24, y + 8, 16, 16, 0x666666);
+          const rock2 = this.add.rectangle(cs + cs/2, y + cs/2, cs, cs, 0x666666);
           this.physics.add.existing(rock2);
           rock2.body.setImmovable(true);
           this.boundaryRocks.add(rock2);
           if (this.worldLayer) this.worldLayer.add(rock2);
         } else {
-          const rock = this.add.rectangle(8, y + 8, 16, 16, 0x666666);
+          const rock = this.add.rectangle(cs/2, y + cs/2, cs, cs, 0x666666);
           this.physics.add.existing(rock);
           rock.body.setImmovable(true);
           this.boundaryRocks.add(rock);
@@ -494,26 +513,26 @@ class MainScene extends Phaser.Scene {
       }
       
       // Right boundary rocks (allow specific gaps instead of removing entire side)
-      for (let y = 16; y < 224; y += 16) {
-        const gy = Math.floor((y - 8) / 16);
-        if (skipRightYs.has(gy) || skipRightYs.has(gy - 1) || skipRightYs.has(gy + 1)) {
+      for (let y = cs; y < H - cs; y += cs) {
+        const gy = Math.floor((y - cs/2) / cs);
+        if (this.isInEdgeGap(gy, skipRightYs)) {
           continue; // gap for right edge door(s)
         }
         if (isShop) {
           // Double thickness for shop
-          const rock1 = this.add.rectangle(296, y + 8, 16, 16, 0x666666);
+          const rock1 = this.add.rectangle(W - (cs + cs/2), y + cs/2, cs, cs, 0x666666);
           this.physics.add.existing(rock1);
           rock1.body.setImmovable(true);
           this.boundaryRocks.add(rock1);
           if (this.worldLayer) this.worldLayer.add(rock1);
 
-          const rock2 = this.add.rectangle(312, y + 8, 16, 16, 0x666666);
+          const rock2 = this.add.rectangle(W - cs/2, y + cs/2, cs, cs, 0x666666);
           this.physics.add.existing(rock2);
           rock2.body.setImmovable(true);
           this.boundaryRocks.add(rock2);
           if (this.worldLayer) this.worldLayer.add(rock2);
         } else {
-          const rock = this.add.rectangle(312, y + 8, 16, 16, 0x666666);
+          const rock = this.add.rectangle(W - cs/2, y + cs/2, cs, cs, 0x666666);
           this.physics.add.existing(rock);
           rock.body.setImmovable(true);
           this.boundaryRocks.add(rock);
@@ -644,6 +663,9 @@ class MainScene extends Phaser.Scene {
     createDoorsForMap() {
       // Get doors for current map (activeDoors already cleared in createMapObjects)
       const mapDoors = this.doorRegistry[this.currentMap] || {};
+      const cs = this.gridCellSize;
+      const maxGX = Math.floor(this.worldPixelWidth / cs) - 1;
+      const maxGY = Math.floor(this.worldPixelHeight / cs) - 1;
 
       for (const [doorId, doorData] of Object.entries(mapDoors)) {
         // Building doors render as visible doors in the map interior/exterior
@@ -678,8 +700,40 @@ class MainScene extends Phaser.Scene {
         ) {
           // Edge exits are invisible sensors near the border inside the map
           let gx = doorData.gridX, gy = doorData.gridY;
+          // Validate placement on exterior wall for overworld maps
+          if (this.maps[this.currentMap]?.type === 'overworld') {
+            if (doorData.type === 'edge_north' && gy !== 0) {
+              console.warn(`Door ${doorId} should be on north edge; clamping gy to 0 (was ${gy}).`);
+              gy = 0;
+            }
+            if (doorData.type === 'edge_south' && gy !== maxGY) {
+              console.warn(`Door ${doorId} should be on south edge; clamping gy to ${maxGY} (was ${gy}).`);
+              gy = maxGY;
+            }
+            if (doorData.type === 'edge_west' && gx !== 0) {
+              console.warn(`Door ${doorId} should be on west edge; clamping gx to 0 (was ${gx}).`);
+              gx = 0;
+            }
+            if (doorData.type === 'edge_east' && gx !== maxGX) {
+              console.warn(`Door ${doorId} should be on east edge; clamping gx to ${maxGX} (was ${gx}).`);
+              gx = maxGX;
+            }
+          }
           let worldPos = this.gridToWorld(gx, gy);
-          const sensor = this.add.rectangle(worldPos.x, worldPos.y, 14, 14, 0x000000, 0);
+          // Size sensor to exactly span the opened gap
+          const r = this.edgeGapRadius ?? 1;
+          const span = (2 * r + 1);
+          let sensorW = 14, sensorH = 14, offX = 0, offY = 0;
+          if (doorData.type === 'edge_east' || doorData.type === 'edge_west') {
+            sensorW = this.gridCellSize;           // thin strip inside the map
+            sensorH = this.gridCellSize * span;    // cover full vertical gap
+            offX = (doorData.type === 'edge_west') ? this.gridCellSize * 0.25 : -this.gridCellSize * 0.25;
+          } else {
+            sensorW = this.gridCellSize * span;    // cover full horizontal gap
+            sensorH = this.gridCellSize;           // thin strip inside the map
+            offY = (doorData.type === 'edge_north') ? this.gridCellSize * 0.25 : -this.gridCellSize * 0.25;
+          }
+          const sensor = this.add.rectangle(worldPos.x + offX, worldPos.y + offY, sensorW, sensorH, 0x000000, 0);
           this.physics.add.existing(sensor);
           sensor.body.setImmovable(false);
           sensor.isEdgeExit = true;
@@ -737,19 +791,57 @@ class MainScene extends Phaser.Scene {
     }
 
     handleEdgeExit(player, sensor) {
-      if (this.transitionLock) return;
+      // Do not re-trigger during a transition or while scrolling
+      if (this.transitionLock || this.isScrolling) return;
+
       const doorId = sensor.doorId;
       const targetInfo = this.maps[this.currentMap].doors[doorId];
       if (targetInfo) {
         const targetDoorData = this.doorRegistry[targetInfo.targetMap][targetInfo.targetDoor];
-        // Place slightly inside the receiving side depending on which edge this sensor belongs to
-        let x = targetDoorData.gridX * 16 + 8;
-        let y = targetDoorData.gridY * 16 + 8;
-        if (targetDoorData.type === 'edge_west') x += 24; // nudge right
-        if (targetDoorData.type === 'edge_east') x -= 24; // nudge left
-        if (targetDoorData.type === 'edge_north') y += 24; // nudge down
-        if (targetDoorData.type === 'edge_south') y -= 24; // nudge up
-        this.transitionToMapWithLock(targetInfo.targetMap, x, y);
+        const cs = this.gridCellSize;
+        const W = this.worldPixelWidth;
+        const H = this.worldPixelHeight;
+        // Derive direction from the source door (the one we touched in the current map)
+        const sourceDoorData = this.doorRegistry[this.currentMap]?.[doorId];
+        const dirMap = {
+          'edge_east': 'right',
+          'edge_west': 'left',
+          'edge_north': 'up',
+          'edge_south': 'down'
+        };
+        const direction = sourceDoorData ? dirMap[sourceDoorData.type] : null;
+
+        // Compute landing position: keep axis aligned with travel
+        // Horizontal travel (left/right): preserve player's Y, adjust X just inside target edge
+        // Vertical travel (up/down): preserve player's X, adjust Y just inside target edge
+        let x = this.player.x;
+        let y = this.player.y;
+        if (direction === 'right' || targetDoorData.type === 'edge_west') {
+          // Entering from the left into the target map's west edge
+          x = cs * 2; // just inside beyond the west sensor
+          y = this.player.y; // preserve vertical position
+        } else if (direction === 'left' || targetDoorData.type === 'edge_east') {
+          // Entering from the right into the target map's east edge
+          x = W - cs * 2; // just inside beyond the east sensor
+          y = this.player.y; // preserve vertical position
+        } else if (direction === 'up' || targetDoorData.type === 'edge_south') {
+          // Entering from the bottom into the target map's south edge
+          y = H - cs * 2; // just inside beyond the south sensor
+          x = this.player.x; // preserve horizontal position
+        } else if (direction === 'down' || targetDoorData.type === 'edge_north') {
+          // Entering from the top into the target map's north edge
+          y = cs * 2; // just inside beyond the north sensor
+          x = this.player.x; // preserve horizontal position
+        }
+
+        // If we're in an overworld map, use smooth scrolling based on the source edge
+
+        if (this.maps[this.currentMap]?.type === 'overworld' && direction) {
+          this.scrollTransitionToMap(direction, targetInfo.targetMap, x, y);
+        } else {
+          // Fallback to instant transition (e.g., for non-overworld maps)
+          this.transitionToMapWithLock(targetInfo.targetMap, x, y);
+        }
       }
     }
 
@@ -762,10 +854,9 @@ class MainScene extends Phaser.Scene {
     }
 
     // Smooth camera scroll transition when moving between adjacent overworld tiles
-    scrollTransitionToMap(direction, newMapId, playerX, playerY) {
+  scrollTransitionToMap(direction, newMapId, playerX, playerY) {
       if (this.isScrolling) return;
-      this.isScrolling = true;
-      this.transitionLock = true;
+      this.beginTransition();
 
       // Freeze player during transition
       if (this.player && this.player.body) {
@@ -794,23 +885,24 @@ class MainScene extends Phaser.Scene {
 
       // Position layers for the slide: new comes toward player, old moves away
       let fromX = 0, fromY = 0, toX = 0, toY = 0;
+      const W = this.worldPixelWidth; const H = this.worldPixelHeight;
       if (direction === 'right') {
         // New content starts on the right and slides in; old slides out to the left
-        newLayer.x = 320;
+        newLayer.x = W;
         oldLayer.x = 0;
-        toX = -320; // old target
+        toX = -W; // old target
       } else if (direction === 'left') {
-        newLayer.x = -320;
+        newLayer.x = -W;
         oldLayer.x = 0;
-        toX = 320;
+        toX = W;
       } else if (direction === 'down') {
-        newLayer.y = 240;
+        newLayer.y = H;
         oldLayer.y = 0;
-        toY = -240;
+        toY = -H;
       } else if (direction === 'up') {
-        newLayer.y = -240;
+        newLayer.y = -H;
         oldLayer.y = 0;
-        toY = 240;
+        toY = H;
       }
 
       // (Noise overlay removed per request)
@@ -830,12 +922,7 @@ class MainScene extends Phaser.Scene {
           newLayer.x = 0; newLayer.y = 0;
           this.worldLayer = newLayer;
           // (Noise overlay cleanup not needed)
-          if (this.player && this.player.body) {
-            this.player.body.enable = true;
-            this.player.body.setVelocity(0, 0);
-          }
-          this.transitionLock = false;
-          this.isScrolling = false;
+          this.endTransition();
         }
       });
   // (Noise fade-in removed)
@@ -849,6 +936,44 @@ class MainScene extends Phaser.Scene {
           duration: 750,
           ease: 'Sine.easeInOut'
         });
+      }
+    }
+
+    // Centralize locking and input/physics freeze during transitions
+    beginTransition() {
+      this.isScrolling = true;
+      this.transitionLock = true;
+      if (this.player && this.player.body) {
+        this.player.body.setVelocity(0, 0);
+        this.player.body.enable = false;
+      }
+      if (this.input && this.input.keyboard) {
+        this.input.keyboard.enabled = false;
+      }
+    }
+
+    // Centralize unlock and key reset after transitions
+    endTransition() {
+      if (this.player && this.player.body) {
+        this.player.body.enable = true;
+        this.player.body.setVelocity(0, 0);
+      }
+      this.transitionLock = false;
+      this.isScrolling = false;
+      if (this.input && this.input.keyboard) {
+        this.input.keyboard.enabled = true;
+      }
+      // Reset key states to avoid sticky movement
+      if (this.keys) {
+        for (const k of Object.values(this.keys)) {
+          if (k && typeof k.reset === 'function') {
+            k.reset();
+          } else if (k) {
+            // Fallback: clear basic flags if reset is not available
+            k.isDown = false;
+            k.isUp = true;
+          }
+        }
       }
     }
 
@@ -1452,7 +1577,7 @@ class MainScene extends Phaser.Scene {
   
     preload() {}
   
-    create() {
+  create() {
       // Launch UI Scene and wait for it to be ready
       this.scene.launch('UIScene');
       this.scene.get('UIScene').events.once('create', () => {
@@ -1561,9 +1686,11 @@ class MainScene extends Phaser.Scene {
         this.equipFromInventory(7);
       });
 
-      // Set up the game world
-      this.cameras.main.setBackgroundColor(this.maps[this.currentMap].color);
-      this.player = this.add.circle(160, 120, 8, 0xffff00);
+  // Set up the game world
+  // Resize camera to account for larger world and HUD band on top
+  this.cameras.main.setViewport(0, this.hudHeight, this.worldPixelWidth, this.worldPixelHeight);
+  this.cameras.main.setBackgroundColor(this.maps[this.currentMap].color);
+  this.player = this.add.circle(this.worldPixelWidth/2, this.worldPixelHeight/2, 8, 0xffff00);
       this.player.setDepth(1); // Put player above ground objects
       this.physics.add.existing(this.player);
 
@@ -1643,6 +1770,13 @@ class MainScene extends Phaser.Scene {
 
     update(time, delta) {
       if (!this.player) return;
+      // Block movement and map checks while the scroll transition runs
+      if (this.isScrolling) {
+        if (this.player.body) {
+          this.player.body.setVelocity(0, 0);
+        }
+        return;
+      }
   
       const body = this.player.body;
       body.setVelocity(0);
@@ -1681,21 +1815,7 @@ class MainScene extends Phaser.Scene {
         this.updateShieldPosition();
       }
   
-      // Map transition logic (overworld tiles) with scrolling animation
-      if (!this.isScrolling && this.maps[this.currentMap]?.type === 'overworld') {
-        if (this.player.x > 320 && this.maps[this.currentMap].exits.right !== undefined) {
-          const nextId = this.maps[this.currentMap].exits.right;
-          // Land slightly inside the left edge of the next tile
-          this.scrollTransitionToMap('right', nextId, 8, this.player.y);
-        } else if (this.player.x < 0 && this.maps[this.currentMap].exits.left !== undefined) {
-          const nextId = this.maps[this.currentMap].exits.left;
-          // Land slightly inside the right edge of the next tile
-          this.scrollTransitionToMap('left', nextId, 312, this.player.y);
-        }
-        // Optional: up/down if exits defined
-        // else if (this.player.y > 240 && this.maps[this.currentMap].exits.down !== undefined) { ... }
-        // else if (this.player.y < 0 && this.maps[this.currentMap].exits.up !== undefined) { ... }
-      }
+      // Overworld transitions are handled solely by edge sensors; no boundary-based triggers.
     }
 }
 
@@ -1726,12 +1846,13 @@ class UIScene extends Phaser.Scene {
         this.events.emit('create');
     }
 
-    createHealthStars() {
+  createHealthStars() {
         this.healthStars = [];
         const starSize = 12;
         const starSpacing = 20;
         const startX = 20;
-        const startY = 8; // Align with top rock boundary
+    const hudHeight = this.scene.get('MainScene')?.hudHeight || 32;
+    const startY = 8; // within HUD band (top-left padding)
 
         for (let i = 0; i < this.maxStars; i++) {
             const x = startX + (i * starSpacing);
@@ -1768,10 +1889,10 @@ class UIScene extends Phaser.Scene {
     }
 
     createEquipmentSlots() {
-        const slotSize = 16; // Match boundary rock height
-        const slotY = 8; // Same level as health stars and boundary rocks
-        const weaponSlotX = 130; // To the right of health stars
-        const shieldSlotX = 150; // Next to weapon slot (closer spacing due to smaller size)
+    const slotSize = 16;
+    const slotY = 8; // within HUD band
+    const weaponSlotX = 130; // To the right of health stars
+    const shieldSlotX = 150; // Next to weapon slot
 
         // Create weapon slot background
         this.weaponSlot = this.add.rectangle(weaponSlotX, slotY, slotSize, slotSize, 0x333333);
@@ -1798,7 +1919,7 @@ class UIScene extends Phaser.Scene {
         this.shieldIcon.setVisible(false);
 
         // Create labels
-        this.weaponLabel = this.add.text(weaponSlotX, slotY + 12, 'Z', {
+    this.weaponLabel = this.add.text(weaponSlotX, slotY + 12, 'Z', {
             fontSize: '7px',
             fill: '#ffffff',
             align: 'center'
@@ -1808,7 +1929,7 @@ class UIScene extends Phaser.Scene {
         this.weaponLabel.setDepth(1);
         this.weaponLabel.setAlpha(0.8);
 
-        this.shieldLabel = this.add.text(shieldSlotX, slotY + 12, 'X', {
+    this.shieldLabel = this.add.text(shieldSlotX, slotY + 12, 'X', {
             fontSize: '7px',
             fill: '#ffffff',
             align: 'center'
@@ -1916,8 +2037,8 @@ class UIScene extends Phaser.Scene {
 // Game configuration
 const config = {
     type: Phaser.AUTO,
-    width: 320,
-    height: 240,
+  width: 384,
+  height: 352, // worldPixelHeight + hudHeight
     physics: {
         default: 'arcade',
         arcade: {
@@ -1929,11 +2050,11 @@ const config = {
     },
     scene: [MainScene, UIScene],
     pixelArt: true,
-    scale: {
-        mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
-        zoom: 2
-    },
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    zoom: 2
+  },
     fps: {
         target: 60,
         forceSetTimeOut: true,
