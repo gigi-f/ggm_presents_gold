@@ -1,0 +1,31 @@
+{
+  "$schema": "./schemas/items.schema.json",
+  "items": [
+    {
+      "id": "iron_pickaxe",
+      "category": "weapon",
+      "name": "Iron Pickaxe",
+      "sprite": null,
+      "stats": { "damage": 1, "speed": 1.0 },
+      "physics": { "width": 12, "height": 4, "color": 8947848 },
+      "effects": { "swingDurationMs": 220 }
+    },
+    {
+      "id": "golden_pickaxe",
+      "category": "weapon",
+      "name": "Golden Pickaxe",
+      "sprite": null,
+      "stats": { "damage": 2, "speed": 0.9 },
+      "physics": { "width": 14, "height": 4, "color": 16766720 },
+      "effects": { "swingDurationMs": 260 }
+    },
+    {
+      "id": "wooden_shield",
+      "category": "shield",
+      "name": "Wooden Shield",
+      "sprite": null,
+      "stats": { "block": 1 },
+      "physics": { "width": 10, "height": 14, "color": 6643073 }
+    }
+  ]
+}

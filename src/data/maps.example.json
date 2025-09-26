@@ -1,0 +1,38 @@
+{
+  "$schema": "./schemas/maps.schema.json",
+  "maps": {
+    "overworld_01": {
+      "type": "overworld",
+      "tilemap": null,
+      "color": 2269158,
+      "exits": { "right": "overworld_02" },
+      "doors": [
+        { "id": "shop_door_01", "gridX": 4, "gridY": 8, "kind": "entrance", "targetMap": "shop_01", "targetDoor": "shop_exit_01" }
+      ],
+      "spawns": [
+        { "id": "meleeWeapon1", "kind": "item", "itemId": "iron_pickaxe", "gridX": 6, "gridY": 6 },
+        { "id": "shield1", "kind": "item", "itemId": "wooden_shield", "gridX": 12, "gridY": 6 }
+      ]
+    },
+    "overworld_02": {
+      "type": "overworld",
+      "tilemap": null,
+      "color": 5373542,
+      "exits": { "left": "overworld_01" },
+      "doors": [],
+      "spawns": []
+    },
+    "shop_01": {
+      "type": "shop",
+      "tilemap": null,
+      "color": 9127187,
+      "exits": {},
+      "doors": [
+        { "id": "shop_exit_01", "gridX": 10, "gridY": 13, "kind": "exit", "targetMap": "overworld_01", "targetDoor": "shop_door_01" }
+      ],
+      "spawns": [
+        { "id": "counter", "kind": "prop", "prop": "counter", "gridX": 10, "gridY": 8 }
+      ]
+    }
+  }
+}

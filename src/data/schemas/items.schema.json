@@ -1,0 +1,32 @@
+{
+  "$id": "items.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "name"],
+        "properties": {
+          "id": { "type": "string" },
+          "category": { "type": "string", "enum": ["weapon", "shield", "consumable", "key", "quest"] },
+          "name": { "type": "string" },
+          "sprite": { "type": ["string", "null"] },
+          "stats": { "type": "object", "additionalProperties": true },
+          "physics": {
+            "type": "object",
+            "properties": {
+              "width": { "type": ["number", "integer"], "minimum": 0 },
+              "height": { "type": ["number", "integer"], "minimum": 0 },
+              "color": { "type": ["number", "integer"], "minimum": 0 }
+            },
+            "additionalProperties": true
+          },
+          "effects": { "type": "object", "additionalProperties": true }
+        }
+      }
+    }
+  },
+  "required": ["items"]
+}
