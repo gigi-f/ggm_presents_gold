@@ -1,4 +1,10 @@
+/*
+ AI-INDEX
+ - Tags: mechanics.combat
+ - See: docs/ai/index.json
+*/
 import Phaser from 'phaser';
+import { damageEnemy } from './enemies';
 export function swingMeleeWeapon(scene) {
   if (!scene.hasMeleeWeapon) { console.log('Cannot swing melee weapon - no weapon equipped!'); return; }
   if (scene.meleeWeaponSwinging) { console.log('Cannot swing melee weapon - already swinging!'); return; }
@@ -64,6 +70,50 @@ export function swingMeleeWeapon(scene) {
       console.log('Cut down bush! Left behind a stump.');
     }
   });
+
+  // Damage enemies within melee arc during the swing window
+  const baseDamage = (() => {
+    if (scene.equippedWeapon) {
+      switch (scene.equippedWeapon.subtype) {
+        case 'strong': return 10;
+        case 'fast': return 6;
+        case 'basic':
+        default: return 8;
+      }
+    }
+    // fallback by meleeWeaponType
+    switch (scene.meleeWeaponType) {
+      case 'strong': return 10;
+      case 'fast': return 6;
+      case 'basic':
+      default: return 8;
+    }
+  })();
+
+  // Quick overlap check with all enemies group
+  if (scene.enemiesGroup) {
+    const enemies = scene.enemiesGroup.getChildren();
+    enemies.forEach(enemy => {
+      if (!enemy.active) return;
+      const dist = Phaser.Math.Distance.Between(scene.player.x, scene.player.y, enemy.x, enemy.y);
+      if (dist > 36) return; // rough melee reach
+      // Simple frontal arc: check angle difference
+      const dx = enemy.x - scene.player.x; const dy = enemy.y - scene.player.y;
+      const enemyAngle = Phaser.Math.RadToDeg(Math.atan2(dy, dx));
+      const dirAngle = (() => {
+        switch (scene.lastDirection) {
+          case 'left': return 180;
+          case 'up': return -90;
+          case 'down': return 90;
+          default: return 0; // right
+        }
+      })();
+      const diff = Phaser.Math.Angle.WrapDegrees(enemyAngle - dirAngle);
+      if (Math.abs(diff) <= 60) {
+        damageEnemy(scene, enemy, baseDamage, { source: 'melee', cooldownMs: 140, knockback: 140, stunMs: 160 });
+      }
+    });
+  }
 
   scene.time.delayedCall(300, () => { scene.meleeWeaponSwinging = false; });
 }

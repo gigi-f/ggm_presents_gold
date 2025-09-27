@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "validate:ai": "node scripts/validate-ai-index.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

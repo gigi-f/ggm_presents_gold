@@ -1,0 +1,262 @@
+/*
+ AI-INDEX
+ - Tags: mechanics.enemies, mechanics.combat
+ - See: docs/ai/index.json
+*/
+import Phaser from 'phaser';
+import { ensureBatTexture } from './batSprite';
+
+// Lightweight enemy system with simple lifecycle and per-type updates
+
+export function ensureGroups(scene) {
+  if (!scene.enemiesGroup) scene.enemiesGroup = scene.add.group();
+}
+
+export function createEnemy(scene, type, x, y, opts = {}) {
+  ensureGroups(scene);
+  let enemy = null;
+  switch (type) {
+    case 'bat':
+      enemy = createBat(scene, x, y, opts);
+      break;
+    default:
+      console.warn('Unknown enemy type:', type);
+  }
+  if (enemy) scene.enemiesGroup.add(enemy);
+  return enemy;
+}
+
+export function updateEnemies(scene, time, delta) {
+  if (!scene.enemiesGroup) return;
+  for (const enemy of scene.enemiesGroup.getChildren()) {
+    if (!enemy.active) continue;
+    switch (enemy.enemyType) {
+      case 'bat':
+        updateBat(scene, enemy, time, delta);
+        break;
+    }
+  }
+}
+
+// Freeze or unfreeze all enemies (disable physics bodies and zero velocity)
+export function freezeEnemies(scene, frozen = true) {
+  if (!scene.enemiesGroup) return;
+  for (const enemy of scene.enemiesGroup.getChildren()) {
+    const body = enemy.body;
+    if (body) {
+      if (frozen) {
+        body.setVelocity(0, 0);
+        body.enable = false;
+      } else {
+        body.enable = true;
+        body.setVelocity(0, 0);
+      }
+    }
+  }
+}
+
+// ------------------ Bat ------------------
+
+function createBat(scene, x, y, opts) {
+  const texKey = ensureBatTexture(scene);
+  const bat = scene.physics.add.sprite(x, y, texKey);
+  bat.body.setImmovable(false);
+  bat.setDepth(2);
+  bat.enemyType = 'bat';
+  bat.maxHealth = opts.maxHealth ?? 20;
+  bat.health = bat.maxHealth;
+  bat.state = 'perched'; // 'perched' | 'chase' | 'return'
+  bat.perchX = opts.perchX ?? x;
+  bat.perchY = opts.perchY ?? y;
+  bat.aggroRadius = opts.aggroRadius ?? 64;
+  bat.deaggroRadius = opts.deaggroRadius ?? 120;
+  bat.speed = opts.speed ?? 90;
+  bat.leash = opts.leash ?? 160;
+  bat.damage = opts.damage ?? 10;
+  bat.playerKnockback = opts.playerKnockback ?? 120;
+  bat.hitCooldownMs = 600;
+  bat._nextHitAt = 0;
+  bat.persistentAcrossMaps = !!opts.persistentAcrossMaps;
+  // Set a compact body around the bat sprite (20x12 texture)
+  if (bat.body.setSize) bat.body.setSize(12, 8);
+  if (bat.body.setOffset) bat.body.setOffset(4, 2);
+  if (scene.worldLayer) {
+    try { scene.worldLayer.add(bat); } catch {}
+  }
+
+  // Overlap damage to player (respects shield)
+  try {
+    scene.physics.add.overlap(scene.player, bat, () => {
+      const now = scene.time.now;
+      if (now < bat._nextHitAt) return;
+      bat._nextHitAt = now + bat.hitCooldownMs;
+      if (!attemptEnemyDamagePlayer(scene, bat)) {
+        // blocked by shield - optional feedback could go here
+      }
+    });
+  } catch {}
+
+  // Perch bobbing and subtle flap animation
+  bat._bobbing = scene.tweens.add({
+    targets: bat,
+    y: bat.perchY - 1,
+    yoyo: true,
+    repeat: -1,
+    duration: 600,
+    ease: 'Sine.easeInOut'
+  });
+  bat._flap = scene.tweens.add({
+    targets: bat,
+    scaleY: 0.9,
+    yoyo: true,
+    repeat: -1,
+    duration: 200,
+    ease: 'Sine.easeInOut'
+  });
+  return bat;
+}
+
+function updateBat(scene, bat, time, delta) {
+  const body = bat.body;
+  if (!body) return;
+
+  // If stunned, keep current knockback velocity and skip AI
+  if (bat.stunUntil && time < bat.stunUntil) {
+    // pause bob while stunned
+    const bob = bat._bobbing; if (bob && !bob.isPaused()) bob.pause();
+    return;
+  }
+
+  const px = scene.player?.x ?? bat.perchX;
+  const py = scene.player?.y ?? bat.perchY;
+  const distPlayer = Phaser.Math.Distance.Between(bat.x, bat.y, px, py);
+  const distPerch = Phaser.Math.Distance.Between(bat.x, bat.y, bat.perchX, bat.perchY);
+
+  // State transitions
+  if (bat.state === 'perched') {
+    body.setVelocity(0, 0);
+    bat.x = bat.x; // noop keep
+    if (distPlayer <= bat.aggroRadius) bat.state = 'chase';
+  } else if (bat.state === 'chase') {
+    if (distPlayer > bat.deaggroRadius || distPerch > bat.leash) bat.state = 'return';
+  } else if (bat.state === 'return') {
+    if (distPerch < 6) {
+      bat.state = 'perched';
+      bat.x = bat.perchX; bat.y = bat.perchY;
+      body.setVelocity(0, 0);
+      return;
+    }
+  }
+
+  // Manage bobbing tween so it doesn't fight vertical movement
+  const bob = bat._bobbing;
+  if (bat.state === 'perched') {
+    if (bob && bob.isPaused()) bob.resume();
+  } else {
+    if (bob && !bob.isPaused()) bob.pause();
+  }
+
+  // Movement behavior
+  if (bat.state === 'chase') {
+    const dx = px - bat.x, dy = py - bat.y;
+    const len = Math.hypot(dx, dy) || 1;
+    body.setVelocity((dx / len) * bat.speed, (dy / len) * bat.speed);
+  } else if (bat.state === 'return') {
+    const dx = bat.perchX - bat.x, dy = bat.perchY - bat.y;
+    const len = Math.hypot(dx, dy) || 1;
+    body.setVelocity((dx / len) * (bat.speed * 0.8), (dy / len) * (bat.speed * 0.8));
+  } else {
+    body.setVelocity(0, 0);
+  }
+}
+
+// Convenience spawner for bats positioned on a tree grid cell
+export function spawnBatAtGrid(scene, gridX, gridY, opts = {}) {
+  const { x, y } = scene.gridToWorld(gridX, gridY);
+  return createEnemy(scene, 'bat', x, y, { perchX: x, perchY: y, ...opts });
+}
+
+// ------------------ Shared combat helpers ------------------
+
+export function damageEnemy(scene, enemy, amount = 1, opts = {}) {
+  if (!enemy || !enemy.active) return false;
+  const now = scene.time?.now ?? 0;
+  // Optional melee hit cooldown to avoid multiple ticks per swing
+  if (opts.source === 'melee') {
+    const cd = opts.cooldownMs ?? 120;
+    if (enemy._nextMeleeHitAt && now < enemy._nextMeleeHitAt) return false;
+    enemy._nextMeleeHitAt = now + cd;
+  }
+  enemy.health = (enemy.health ?? 1) - amount;
+  // brief hit flash
+  try { enemy.setTint?.(0xff6666); scene.time.delayedCall(80, () => enemy.clearTint?.()); } catch {}
+  // floating damage number
+  try {
+    const dmgText = scene.add.text(enemy.x, enemy.y - 10, `${amount}`, { fontSize: '10px', color: '#ffea00' }).setOrigin(0.5).setDepth(999);
+    scene.tweens.add({ targets: dmgText, y: dmgText.y - 16, alpha: 0, duration: 350, onComplete: () => dmgText.destroy() });
+  } catch {}
+  // Apply knockback + stun
+  try {
+    const kb = opts.knockback ?? 110;
+    const stunMs = opts.stunMs ?? 120;
+    if (enemy.body && scene.player) {
+      const dx = enemy.x - scene.player.x; const dy = enemy.y - scene.player.y;
+      const len = Math.hypot(dx, dy) || 1;
+      enemy.body.setVelocity((dx / len) * kb, (dy / len) * kb);
+      enemy.stunUntil = now + stunMs;
+    }
+  } catch {}
+  if (enemy.health <= 0) {
+    killEnemy(scene, enemy);
+  }
+  return true;
+}
+
+export function killEnemy(scene, enemy) {
+  if (!enemy || !enemy.active) return;
+  // Death puff FX
+  try {
+    const puff = scene.add.circle(enemy.x, enemy.y, 6, 0xffffff, 1);
+    puff.setDepth((enemy.depth ?? 2) + 1);
+    scene.tweens.add({ targets: puff, alpha: 0, scale: 1.8, duration: 200, onComplete: () => puff.destroy() });
+  } catch {}
+  try { enemy._bobbing?.stop(); enemy._flap?.stop(); } catch {}
+  try { enemy.destroy(); } catch {}
+}
+
+function attemptEnemyDamagePlayer(scene, enemy) {
+  const now = scene.time?.now ?? 0;
+  if (scene._nextPlayerHitAt && now < scene._nextPlayerHitAt) return false;
+  // If shield is raised and visible, block damage
+  if (scene.shieldRaised && scene.shieldSprite && scene.shieldSprite.visible) {
+    // Block FX: quick shield flash and spark
+    try {
+      scene.shieldSprite.setTint(0x88ccff);
+      scene.time.delayedCall(80, () => scene.shieldSprite.clearTint());
+      const spark = scene.add.circle(scene.shieldSprite.x, scene.shieldSprite.y, 3, 0x88ccff, 1);
+      spark.setDepth(999);
+      scene.tweens.add({ targets: spark, alpha: 0, scale: 1.5, duration: 150, onComplete: () => spark.destroy() });
+    } catch {}
+    return false;
+  }
+  if (typeof scene.takeDamage === 'function') scene.takeDamage(enemy.damage ?? 1);
+  scene._nextPlayerHitAt = now + (enemy.playerIFrameMs ?? 400);
+  try {
+    if (scene.player?.setAlpha) {
+      scene.player.setAlpha(0.7);
+      scene.time.delayedCall(100, () => { try { scene.player.setAlpha(1); } catch {} });
+    }
+  } catch {}
+  // Player knockback away from enemy
+  try {
+    if (scene.player?.body) {
+      const dx = scene.player.x - enemy.x; const dy = scene.player.y - enemy.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const kb = enemy.playerKnockback ?? 120;
+      scene.player.body.setVelocity((dx / len) * kb, (dy / len) * kb);
+      // brief dampening reset
+      scene.time.delayedCall(120, () => { try { scene.player.body.setVelocity(0, 0); } catch {} });
+    }
+  } catch {}
+  return true;
+}

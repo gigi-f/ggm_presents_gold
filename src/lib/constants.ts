@@ -5,6 +5,7 @@ export const SCENES = {
 } as const;
 
 export const MAP_IDS = {
+  OVERWORLD_00: 'overworld_00',
   OVERWORLD_01: 'overworld_01',
   OVERWORLD_02: 'overworld_02',
   SHOP_01: 'shop_01'
@@ -16,7 +17,9 @@ export const DOOR_IDS = {
   EAST_EXIT_A: 'east_exit_A',
   EAST_EXIT_B: 'east_exit_B',
   WEST_ENTRY_A: 'west_entry_A',
-  WEST_ENTRY_B: 'west_entry_B'
+  WEST_ENTRY_B: 'west_entry_B',
+  NORTH_EXIT_A: 'north_exit_A',
+  SOUTH_ENTRY_A: 'south_entry_A'
 } as const;
 
 export const DIRECTIONS = {

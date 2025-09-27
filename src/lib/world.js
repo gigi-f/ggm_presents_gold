@@ -1,4 +1,12 @@
+/*
+ AI-INDEX
+ - Tags: mechanics.doors, mechanics.economy, mechanics.buildings
+ - See: docs/ai/index.json
+*/
 import { MAP_IDS, DOOR_IDS } from './constants';
+import { getCurrencySpec } from './economy';
+import { createShopBuilding as genShop } from './buildings';
+import * as Enemies from './enemies';
 
 export function initializeGrid(scene) {
   scene.gridWidth = Math.floor(scene.worldPixelWidth / scene.gridCellSize);
@@ -37,19 +45,24 @@ export function worldToGrid(scene, worldX, worldY) {
 
 export function createDoorContainer(scene, worldX, worldY, kind = 'entrance', meta = {}) {
   const container = scene.add.container(worldX, worldY);
-  container.setDepth(1);
+  // Ensure door renders above buildings and wall collisions
+  container.setDepth(100);
   container.isDoorContainer = true;
   container.kind = kind;
 
-  const doorRect = scene.add.rectangle(0, 0, 16, 32, 0x654321);
+  const cs = scene.gridCellSize ?? 16;
+  const doorRect = scene.add.rectangle(0, 0, cs + 8, cs * 2 + 4, 0x654321);
   scene.physics.add.existing(doorRect);
   doorRect.body.setImmovable(false);
-  doorRect.setDepth(1);
+  doorRect.setDepth(101);
   doorRect.isShopDoor = true;
   doorRect.ownerContainer = container;
+  // Align door's bottom with the bottom of its grid cell (and the building bottom)
+  doorRect.setOrigin(0.5, 1);
+  doorRect.y = cs / 2;
 
-  const handle = scene.add.circle(4, 0, 2, 0xFFD700);
-  handle.setDepth(2);
+  const handle = scene.add.circle(4, -8, 2, 0xFFD700);
+  handle.setDepth(102);
   handle.isDoorHandle = true;
 
   container.add([doorRect, handle]);
@@ -86,6 +99,19 @@ export function placeObjectOnGrid(scene, gridX, gridY, objectType, addToGroup = 
       obj.body.setImmovable(true);
       obj.shieldType = extraData.shieldType;
       obj.shieldName = extraData.shieldName;
+      if (scene.worldLayer) scene.worldLayer.add(obj);
+      break;
+    }
+    case 'currency': {
+      const type = extraData.type || 'copper';
+      const spec = getCurrencySpec(type);
+      if (!spec) return null;
+      obj = scene.add.circle(worldPos.x, worldPos.y, spec.radius, spec.color);
+      scene.physics.add.existing(obj);
+      obj.body.setImmovable(true);
+      obj.currencyType = type;
+      obj.currencyValue = spec.value;
+      obj.setDepth(1);
       if (scene.worldLayer) scene.worldLayer.add(obj);
       break;
     }
@@ -190,16 +216,7 @@ export function toggleGridVisibility(scene) {
   }
 }
 
-export function createShopBuilding(scene, doorGridX, doorGridY) {
-  placeObjectOnGrid(scene, doorGridX - 1, doorGridY - 2, 'buildingWall', scene.buildingWalls);
-  placeObjectOnGrid(scene, doorGridX, doorGridY - 2, 'shopSign', scene.buildingWalls);
-  placeObjectOnGrid(scene, doorGridX + 1, doorGridY - 2, 'buildingWall', scene.buildingWalls);
-  placeObjectOnGrid(scene, doorGridX - 1, doorGridY - 1, 'buildingWall', scene.buildingWalls);
-  placeObjectOnGrid(scene, doorGridX, doorGridY - 1, 'buildingWall', scene.buildingWalls);
-  placeObjectOnGrid(scene, doorGridX + 1, doorGridY - 1, 'buildingWall', scene.buildingWalls);
-  placeObjectOnGrid(scene, doorGridX - 1, doorGridY, 'buildingWall', scene.buildingWalls);
-  placeObjectOnGrid(scene, doorGridX + 1, doorGridY, 'buildingWall', scene.buildingWalls);
-}
+export function createShopBuilding(scene, doorGridX, doorGridY) { return genShop(scene, doorGridX, doorGridY); }
 
 export function createDoorsForMap(scene) {
   const mapDoors = scene.doorRegistry[scene.currentMap] || {};
@@ -216,7 +233,12 @@ export function createDoorsForMap(scene) {
         if (doorData.type === 'building_entrance') {
           scene.physics.add.overlap(scene.player, sensor, scene.enterBuilding, () => !scene.transitionLock, scene);
           if (doorId === DOOR_IDS.SHOP_DOOR_01 && scene.currentMap === MAP_IDS.OVERWORLD_01) {
-            createShopBuilding(scene, doorData.gridX, doorData.gridY);
+            // Seeded by map + door for deterministic variation
+            createShopBuilding(scene, doorData.gridX, doorData.gridY, { seed: `${scene.currentMap}:${doorId}` });
+            // After building is drawn, make sure the door renders above it
+            if (scene.worldLayer && doorContainer) {
+              try { scene.worldLayer.bringToTop(doorContainer); } catch (e) { /* noop if not supported */ }
+            }
           }
         } else {
           scene.physics.add.overlap(scene.player, sensor, scene.exitBuilding, () => !scene.transitionLock, scene);
@@ -270,6 +292,15 @@ export function createMapObjects(scene, options = {}) {
   if (!scene.treeTrunks) scene.treeTrunks = scene.add.group();
   if (!scene.stumps) scene.stumps = scene.add.group();
   if (!scene.buildingWalls) scene.buildingWalls = scene.add.group();
+  if (!scene.enemiesGroup) scene.enemiesGroup = scene.add.group();
+  // Clear previous building wall colliders to avoid stale collision blocking
+  if (scene.buildingWalls) {
+    scene.buildingWalls.clear(true, true);
+  }
+  // Clear existing enemies on rebuild unless preserved (for persistence across transitions/boss rooms)
+  if (scene.enemiesGroup && !options.preserveEnemies) {
+    scene.enemiesGroup.clear(true, true);
+  }
 
   const currentMapData = scene.maps[scene.currentMap];
   const isShop = currentMapData.type === 'shop';
@@ -287,7 +318,7 @@ export function createMapObjects(scene, options = {}) {
     else if (d.type === 'edge_south') skipBottomXs.add(d.gridX);
     else if (d.type === 'edge_west') skipLeftYs.add(d.gridY);
     else if (d.type === 'edge_east') skipRightYs.add(d.gridY);
-    if (d.type === 'building_exit' && d.gridY >= 13) skipBottomXs.add(d.gridX);
+    // Remove automatic wall gap for building_exit doors - let the door sprite handle access
   }
 
   for (let x = 0; x < W; x += cs) {
@@ -386,24 +417,17 @@ export function createMapObjects(scene, options = {}) {
     scene.treeTrunks.clear();
     scene.stumps.clear();
     placeObjectOnGrid(scene, 9, 5, 'bush', scene.mapBushes);
-    if (!scene.collectedItems.meleeWeapon1) {
-      scene.meleeWeapon1 = placeObjectOnGrid(scene, 6, 6, 'weapon', null, { width: 12, height: 4, color: 0x888888, weaponType: 'basic', weaponName: 'Iron Pickaxe' });
-    }
-    if (!scene.collectedItems.meleeWeapon2) {
-      scene.meleeWeapon2 = placeObjectOnGrid(scene, 7, 6, 'weapon', null, { width: 14, height: 4, color: 0xFFD700, weaponType: 'strong', weaponName: 'Golden Pickaxe' });
-    }
-    if (!scene.collectedItems.meleeWeapon3) {
-      scene.meleeWeapon3 = placeObjectOnGrid(scene, 8, 6, 'weapon', null, { width: 10, height: 4, color: 0x00FFFF, weaponType: 'fast', weaponName: 'Crystal Pickaxe' });
-    }
-    if (!scene.collectedItems.shield1) {
-      scene.shield1 = placeObjectOnGrid(scene, 12, 6, 'shield', null, { width: 10, height: 14, color: 0x654321, shieldType: 'basic', shieldName: 'Wooden Shield' });
-    }
-    if (!scene.collectedItems.shield2) {
-      scene.shield2 = placeObjectOnGrid(scene, 13, 6, 'shield', null, { width: 12, height: 16, color: 0xC0C0C0, shieldType: 'strong', shieldName: 'Steel Shield' });
-    }
-    if (!scene.collectedItems.shield3) {
-      scene.shield3 = placeObjectOnGrid(scene, 14, 6, 'shield', null, { width: 8, height: 12, color: 0x4169E1, shieldType: 'light', shieldName: 'Magic Shield' });
-    }
+    // Items moved to shop - overworld is now clear of weapons/shields
+    
+    // Add currency ingots (scalable via IDs)
+    const spawnCurrency = (id, gx, gy, type) => {
+      if (scene.collectedCurrency && scene.collectedCurrency.has(id)) return;
+      const obj = placeObjectOnGrid(scene, gx, gy, 'currency', null, { type });
+      if (obj) obj.currencyId = id;
+      return obj;
+    };
+    scene.copperIngot1 = spawnCurrency('overworld1:copper1', 10, 5, 'copper');
+    scene.silverIngot1 = spawnCurrency('overworld1:silver1', 11, 5, 'silver');
   } else if (scene.currentMap === MAP_IDS.OVERWORLD_02) {
     scene.stumps.clear();
     placeObjectOnGrid(scene, 6, 7, 'bush', scene.mapBushes);
@@ -411,14 +435,78 @@ export function createMapObjects(scene, options = {}) {
     placeObjectOnGrid(scene, 10, 3, 'treeTrunkLarge', scene.treeTrunks);
     placeObjectOnGrid(scene, 5, 12, 'treeTrunkSmall', scene.treeTrunks);
     placeObjectOnGrid(scene, 16, 8, 'treeTrunkMedium', scene.treeTrunks);
+  } else if (scene.currentMap === MAP_IDS.OVERWORLD_00) {
+    scene.treeTrunks.clear();
+    scene.stumps.clear();
+    // Sparse props to differentiate visually
+    placeObjectOnGrid(scene, 6, 6, 'bush', scene.mapBushes);
+    placeObjectOnGrid(scene, 12, 8, 'treeTrunkSmall', scene.treeTrunks);
+    placeObjectOnGrid(scene, 16, 6, 'bush', scene.mapBushes);
+    // Place a bat perched on a tree just north of the trunk (sitting in the canopy)
+    try {
+      Enemies.spawnBatAtGrid(scene, 12, 7, { aggroRadius: 64, deaggroRadius: 120, speed: 90, leash: 160, damage: 10, persistentAcrossMaps: false });
+    } catch (e) { console.warn('Failed to spawn bat:', e); }
   } else if (scene.currentMap === MAP_IDS.SHOP_01) {
     scene.treeTrunks.clear();
     scene.stumps.clear();
-    scene.shopCounter = placeObjectOnGrid(scene, 10, 8, 'treeTrunkLarge', scene.treeTrunks);
-    placeObjectOnGrid(scene, 6, 5, 'treeTrunkSmall', scene.treeTrunks);
-    placeObjectOnGrid(scene, 14, 5, 'treeTrunkSmall', scene.treeTrunks);
-    placeObjectOnGrid(scene, 4, 8, 'treeTrunkSmall', scene.treeTrunks);
-    placeObjectOnGrid(scene, 16, 8, 'treeTrunkSmall', scene.treeTrunks);
+    // Shop is now clear of obstacles - place all items here instead
+    // Create a counter to block access to items behind it
+    if (!scene.shopCounter) {
+      const left = gridToWorld(scene, 2, 6);
+      const right = gridToWorld(scene, Math.floor(scene.worldPixelWidth / scene.gridCellSize) - 2, 6);
+      const width = right.x - left.x;
+      const counter = scene.add.rectangle(left.x + width / 2, left.y, width, 8, 0x5a3b2e);
+      scene.physics.add.existing(counter);
+      counter.body.setImmovable(true);
+      counter.setDepth(1);
+      scene.shopCounter = counter;
+      if (scene.worldLayer) scene.worldLayer.add(counter);
+    }
+    // Place a shopkeeper NPC near the back counter
+    if (!scene.shopkeeper) {
+      const pos = gridToWorld(scene, 10, 6);
+      scene.shopkeeper = scene.add.rectangle(pos.x, pos.y, 12, 18, 0xAA7733);
+      scene.shopkeeper.setDepth(1);
+      scene.physics.add.existing(scene.shopkeeper);
+      scene.shopkeeper.body.setImmovable(true);
+      if (scene.worldLayer) scene.worldLayer.add(scene.shopkeeper);
+      // Add a simple name tag
+      const label = scene.add.text(pos.x, pos.y - 14, 'Shopkeep', { fontSize: '7px', color: '#fff' });
+      label.setOrigin(0.5, 1);
+      label.setDepth(2);
+      if (scene.worldLayer) scene.worldLayer.add(label);
+      scene.shopkeeper.label = label;
+    }
+    if (!scene.collectedItems.meleeWeapon1) {
+      const obj = placeObjectOnGrid(scene, 4, 4, 'weapon', null, { width: 12, height: 4, color: 0x888888, weaponType: 'basic', weaponName: 'Iron Pickaxe' });
+      if (obj) { obj.isShopItem = true; obj.itemType = 'weapon'; obj.itemSubtype = obj.weaponType; obj.itemName = obj.weaponName; }
+      scene.meleeWeapon1 = obj;
+    }
+    if (!scene.collectedItems.meleeWeapon2) {
+      const obj = placeObjectOnGrid(scene, 6, 4, 'weapon', null, { width: 14, height: 4, color: 0xFFD700, weaponType: 'strong', weaponName: 'Golden Pickaxe' });
+      if (obj) { obj.isShopItem = true; obj.itemType = 'weapon'; obj.itemSubtype = obj.weaponType; obj.itemName = obj.weaponName; }
+      scene.meleeWeapon2 = obj;
+    }
+    if (!scene.collectedItems.meleeWeapon3) {
+      const obj = placeObjectOnGrid(scene, 8, 4, 'weapon', null, { width: 10, height: 4, color: 0x00FFFF, weaponType: 'fast', weaponName: 'Crystal Pickaxe' });
+      if (obj) { obj.isShopItem = true; obj.itemType = 'weapon'; obj.itemSubtype = obj.weaponType; obj.itemName = obj.weaponName; }
+      scene.meleeWeapon3 = obj;
+    }
+    if (!scene.collectedItems.shield1) {
+      const obj = placeObjectOnGrid(scene, 12, 4, 'shield', null, { width: 10, height: 14, color: 0x654321, shieldType: 'basic', shieldName: 'Wooden Shield' });
+      if (obj) { obj.isShopItem = true; obj.itemType = 'shield'; obj.itemSubtype = obj.shieldType; obj.itemName = obj.shieldName; }
+      scene.shield1 = obj;
+    }
+    if (!scene.collectedItems.shield2) {
+      const obj = placeObjectOnGrid(scene, 14, 4, 'shield', null, { width: 12, height: 16, color: 0xC0C0C0, shieldType: 'strong', shieldName: 'Steel Shield' });
+      if (obj) { obj.isShopItem = true; obj.itemType = 'shield'; obj.itemSubtype = obj.shieldType; obj.itemName = obj.shieldName; }
+      scene.shield2 = obj;
+    }
+    if (!scene.collectedItems.shield3) {
+      const obj = placeObjectOnGrid(scene, 16, 4, 'shield', null, { width: 8, height: 12, color: 0x4169E1, shieldType: 'light', shieldName: 'Magic Shield' });
+      if (obj) { obj.isShopItem = true; obj.itemType = 'shield'; obj.itemSubtype = obj.shieldType; obj.itemName = obj.shieldName; }
+      scene.shield3 = obj;
+    }
   }
 
   createDoorsForMap(scene);
@@ -426,13 +514,19 @@ export function createMapObjects(scene, options = {}) {
   scene.physics.add.collider(scene.player, scene.mapBushes);
   scene.physics.add.collider(scene.player, scene.treeTrunks);
   scene.physics.add.collider(scene.player, scene.buildingWalls);
+  if (scene.shopCounter) scene.physics.add.collider(scene.player, scene.shopCounter);
 
-  if (scene.meleeWeapon1) scene.physics.add.overlap(scene.player, scene.meleeWeapon1, scene.pickupMeleeWeapon, null, scene);
-  if (scene.meleeWeapon2) scene.physics.add.overlap(scene.player, scene.meleeWeapon2, scene.pickupMeleeWeapon, null, scene);
-  if (scene.meleeWeapon3) scene.physics.add.overlap(scene.player, scene.meleeWeapon3, scene.pickupMeleeWeapon, null, scene);
-  if (scene.shield1) scene.physics.add.overlap(scene.player, scene.shield1, scene.pickupShield, null, scene);
-  if (scene.shield2) scene.physics.add.overlap(scene.player, scene.shield2, scene.pickupShield, null, scene);
-  if (scene.shield3) scene.physics.add.overlap(scene.player, scene.shield3, scene.pickupShield, null, scene);
+  // Item overlaps (disabled in shop; purchases happen via dialog)
+  if (scene.currentMap !== MAP_IDS.SHOP_01) {
+    if (scene.meleeWeapon1) scene.physics.add.overlap(scene.player, scene.meleeWeapon1, scene.pickupMeleeWeapon, null, scene);
+    if (scene.meleeWeapon2) scene.physics.add.overlap(scene.player, scene.meleeWeapon2, scene.pickupMeleeWeapon, null, scene);
+    if (scene.meleeWeapon3) scene.physics.add.overlap(scene.player, scene.meleeWeapon3, scene.pickupMeleeWeapon, null, scene);
+    if (scene.shield1) scene.physics.add.overlap(scene.player, scene.shield1, scene.pickupShield, null, scene);
+    if (scene.shield2) scene.physics.add.overlap(scene.player, scene.shield2, scene.pickupShield, null, scene);
+    if (scene.shield3) scene.physics.add.overlap(scene.player, scene.shield3, scene.pickupShield, null, scene);
+  }
+  if (scene.copperIngot1) scene.physics.add.overlap(scene.player, scene.copperIngot1, scene.pickupCurrency, null, scene);
+  if (scene.silverIngot1) scene.physics.add.overlap(scene.player, scene.silverIngot1, scene.pickupCurrency, null, scene);
 
   if (scene.gridVisible) createGridVisualization(scene);
 }

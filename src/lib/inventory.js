@@ -1,3 +1,8 @@
+/*
+ AI-INDEX
+ - Tags: mechanics.inventory
+ - See: docs/ai/index.json
+*/
 import { SCENES } from './constants';
 
 export function addToInventory(scene, item) {

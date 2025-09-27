@@ -1,3 +1,8 @@
+/*
+ AI-INDEX
+ - Tags: engine.scenes, mechanics.inventory, mechanics.economy
+ - See: docs/ai/index.json
+*/
 import Phaser from 'phaser';
 
 export class UIScene extends Phaser.Scene {
@@ -11,6 +16,11 @@ export class UIScene extends Phaser.Scene {
         this.shieldIcon = null;
         this.weaponLabel = null;
         this.shieldLabel = null;
+        
+        // Currency display elements
+        this.currencyText = null;
+        this.copperIngotIcon = null;
+        this.silverIngotIcon = null;
     }
 
     create() {
@@ -19,6 +29,9 @@ export class UIScene extends Phaser.Scene {
         
         // Create equipment indicators
         this.createEquipmentSlots();
+        
+        // Create currency display
+        this.createCurrencyDisplay();
         
         // Make sure UI stays on top
         this.scene.bringToTop();
@@ -121,6 +134,34 @@ export class UIScene extends Phaser.Scene {
         this.shieldLabel.setAlpha(0.8);
     }
 
+    createCurrencyDisplay() {
+        const currencyX = 200; // Position to the right of equipment slots
+        const currencyY = 8; // Same Y as other HUD elements
+        
+        // Currency text display
+        this.currencyText = this.add.text(currencyX, currencyY, '0p', {
+            fontSize: '8px',
+            fill: '#ffffff',
+            align: 'left'
+        });
+        this.currencyText.setOrigin(0, 0.5);
+        this.currencyText.setScrollFactor(0);
+        this.currencyText.setDepth(2);
+        this.currencyText.setAlpha(0.9);
+        
+        // Small copper ingot icon
+        this.copperIngotIcon = this.add.circle(currencyX + 25, currencyY, 3, 0xB87333);
+        this.copperIngotIcon.setScrollFactor(0);
+        this.copperIngotIcon.setDepth(2);
+        this.copperIngotIcon.setAlpha(0.8);
+        
+        // Small silver ingot icon  
+        this.silverIngotIcon = this.add.circle(currencyX + 35, currencyY, 4, 0xC0C0C0);
+        this.silverIngotIcon.setScrollFactor(0);
+        this.silverIngotIcon.setDepth(2);
+        this.silverIngotIcon.setAlpha(0.8);
+    }
+
     updateHealthBar(health, maxHealth) {
         if (!this.healthStars || this.healthStars.length === 0) {
             console.warn('Health stars not yet initialized');
@@ -212,6 +253,23 @@ export class UIScene extends Phaser.Scene {
     updateEquipmentDisplay(weaponData, shieldData) {
         this.updateWeaponDisplay(weaponData);
         this.updateShieldDisplay(shieldData);
+    }
+    
+    updateCurrency(totalCurrency, copperCount, silverCount) {
+        if (!this.currencyText) {
+            // UI not ready yet, skip update
+            return;
+        }
+        
+        this.currencyText.setText(`${totalCurrency}p`);
+        
+        // Update icon visibility based on what's been collected
+        if (this.copperIngotIcon) {
+            this.copperIngotIcon.setAlpha(copperCount > 0 ? 1.0 : 0.3);
+        }
+        if (this.silverIngotIcon) {
+            this.silverIngotIcon.setAlpha(silverCount > 0 ? 1.0 : 0.3);
+        }
     }
 }
 

@@ -1,0 +1,89 @@
+{
+  "$schema": "./schema.json",
+  "version": 1,
+  "updated": "2025-09-26",
+  "project": "Gold Hunter",
+  "summary": "Top-down 2D action-adventure built with Phaser 3. AI index for quick code navigation.",
+  "entryPoints": {
+    "game": "src/game.ts",
+    "mainScene": "src/main.js",
+    "uiScene": "src/scenes/UIScene.js",
+    "testScene": "src/scenes/TestScene.js",
+    "world": "src/lib/world.js",
+    "buildings": "src/lib/buildings.js",
+    "transitions": "src/lib/transitions.js",
+    "inventory": "src/lib/inventory.js",
+    "combat": "src/lib/combat.js",
+    "economy": "src/lib/economy.js",
+    "constants": ["src/constants.js", "src/lib/constants.ts"]
+  },
+  "tags": [
+    {
+      "id": "mechanics.doors",
+      "label": "Door system & map transitions",
+      "files": ["src/lib/world.js", "src/lib/transitions.js"],
+      "anchors": [
+        { "file": "src/lib/world.js", "contains": ["createDoorsForMap"], "note": "Door registry -> sensor creation & overlaps" },
+        { "file": "src/lib/world.js", "contains": ["enterBuilding", "exitBuilding", "handleEdgeExit"], "note": "Door callbacks" },
+        { "file": "src/lib/transitions.js", "contains": ["scrollTransitionToMap", "beginTransition", "endTransition"], "note": "Scroll tween, locks" }
+      ]
+    },
+    {
+      "id": "mechanics.buildings",
+      "label": "Procedural buildings & collisions",
+      "files": ["src/lib/buildings.js"],
+      "anchors": [
+        { "file": "src/lib/buildings.js", "contains": ["createShopBuilding"], "note": "Shop footprint, walls, door gap" },
+        { "file": "src/lib/buildings.js", "contains": ["ENABLE_ROOF"], "note": "Roof toggle" }
+      ]
+    },
+    {
+      "id": "mechanics.inventory",
+      "label": "Inventory & equipment",
+      "files": ["src/lib/inventory.js", "src/main.js", "src/scenes/UIScene.js"],
+      "anchors": [
+        { "file": "src/lib/inventory.js", "contains": ["addToInventory", "equipWeapon", "equipShield"], "note": "Core inventory ops" },
+        { "file": "src/main.js", "contains": ["pickupMeleeWeapon", "pickupShield", "updateEquipmentHUD"], "note": "Scene glue" },
+        { "file": "src/scenes/UIScene.js", "contains": ["updateWeaponDisplay", "updateShieldDisplay"], "note": "HUD equip icons" }
+      ]
+    },
+    {
+      "id": "mechanics.combat",
+      "label": "Combat (melee, shield)",
+      "files": ["src/lib/combat.js", "src/main.js"],
+      "anchors": [
+        { "file": "src/lib/combat.js", "contains": ["swingMeleeWeapon", "raiseShield", "lowerShield"], "note": "Combat helpers" },
+        { "file": "src/main.js", "contains": ["meleeWeaponSwinging", "shieldRaised"], "note": "State & event bindings" }
+      ]
+    },
+    {
+      "id": "mechanics.economy",
+      "label": "Economy (currencies, wallet, HUD)",
+      "files": ["src/lib/economy.js", "src/lib/world.js", "src/scenes/UIScene.js", "src/main.js"],
+      "anchors": [
+        { "file": "src/lib/economy.js", "contains": ["CURRENCIES", "initWallet", "addToWallet"], "note": "Registry + wallet" },
+        { "file": "src/lib/world.js", "contains": ["placeObjectOnGrid", "spawnCurrency"], "note": "Currency objects & ids" },
+        { "file": "src/main.js", "contains": ["pickupCurrency", "initWallet"], "note": "Wallet wiring" },
+        { "file": "src/scenes/UIScene.js", "contains": ["updateCurrency"], "note": "HUD totals & icons" }
+      ]
+    },
+    {
+      "id": "engine.input",
+      "label": "Input bindings",
+      "files": ["src/main.js"],
+      "anchors": [
+        { "file": "src/main.js", "contains": ["input.keyboard.on(", "keys = {"] , "note": "Keys + handlers" }
+      ]
+    },
+    {
+      "id": "engine.scenes",
+      "label": "Scene bootstrapping",
+      "files": ["src/game.ts", "src/main.js", "src/scenes/UIScene.js"],
+      "anchors": [
+        { "file": "src/game.ts", "contains": ["new Phaser.Game", "scene"], "note": "Game config" },
+        { "file": "src/main.js", "contains": "create(", "note": "Main scene lifecycle (see also transitionToMap & createMapObjects)" },
+        { "file": "src/scenes/UIScene.js", "contains": "events.emit('create')", "note": "UI lifecycle & ready signal" }
+      ]
+    }
+  ]
+}

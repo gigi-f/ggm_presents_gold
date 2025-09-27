@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AI Code Index Schema",
+  "type": "object",
+  "properties": {
+    "version": { "type": "integer" },
+    "updated": { "type": "string" },
+    "project": { "type": "string" },
+    "summary": { "type": "string" },
+    "entryPoints": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "array" ] }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "files": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "anchors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": { "type": "string" },
+                "contains": {
+                  "oneOf": [
+                    { "type": "string" },
+                    { "type": "array", "items": { "type": "string" } }
+                  ]
+                },
+                "note": { "type": "string" }
+              },
+              "required": ["file", "contains"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["id", "label", "files"],
+        "additionalProperties": false
+      }
+    },
+    "conventions": { "type": "object" }
+  },
+  "required": ["version", "updated", "project", "tags"],
+  "additionalProperties": true
+}

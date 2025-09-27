@@ -1,5 +1,11 @@
+/*
+ AI-INDEX
+ - Tags: mechanics.doors, engine.scenes
+ - See: docs/ai/index.json
+*/
 // Transition helpers for smooth overworld scrolling and input/physics locking
 // This module is pure JS to avoid adding TS friction before Node deps are installed.
+import { freezeEnemies } from './enemies';
 
 /** Begin a transition: lock input and physics */
 export function beginTransition(scene) {
@@ -9,6 +15,8 @@ export function beginTransition(scene) {
     scene.player.body.setVelocity(0, 0);
     scene.player.body.enable = false;
   }
+  // Freeze enemies
+  freezeEnemies(scene, true);
   if (scene.input && scene.input.keyboard) {
     scene.input.keyboard.enabled = false;
   }
@@ -22,6 +30,8 @@ export function endTransition(scene) {
   }
   scene.transitionLock = false;
   scene.isScrolling = false;
+  // Unfreeze enemies
+  freezeEnemies(scene, false);
   if (scene.input && scene.input.keyboard) {
     scene.input.keyboard.enabled = true;
   }
@@ -55,9 +65,9 @@ export function scrollTransitionToMap(scene, direction, newMapId, playerX, playe
   scene.currentMap = newMapId;
   scene.cameras.main.setBackgroundColor(targetColor);
 
-  // Build new map into newLayer
+  // Build new map into newLayer; preserve enemies so persistent ones can be rehomed
   scene.worldLayer = newLayer;
-  scene.createMapObjects({ preserveExistingWorld: true, buildIntoExistingWorldLayer: true });
+  scene.createMapObjects({ preserveExistingWorld: true, buildIntoExistingWorldLayer: true, preserveEnemies: true });
 
   // Position layers
   let toX = 0, toY = 0;
@@ -75,6 +85,19 @@ export function scrollTransitionToMap(scene, direction, newMapId, playerX, playe
     duration: 750,
     ease: 'Sine.easeInOut',
     onComplete: () => {
+      // Move/destroy only enemies that belong to the OLD layer
+      if (scene.enemiesGroup) {
+        for (const enemy of scene.enemiesGroup.getChildren()) {
+          if (!enemy.active) continue;
+          const inOldLayer = enemy.parentContainer === oldLayer;
+          if (!inOldLayer) continue; // leave new-layer enemies intact
+          if (enemy.persistentAcrossMaps) {
+            try { newLayer.add(enemy); } catch {}
+          } else {
+            try { enemy.destroy(); } catch {}
+          }
+        }
+      }
       oldLayer.destroy(true);
       newLayer.x = 0; newLayer.y = 0;
       scene.worldLayer = newLayer;

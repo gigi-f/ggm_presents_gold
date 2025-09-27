@@ -16,3 +16,17 @@ Top-down 2D action-adventure built with Phaser 3.
 Notes:
 - No build step required; static HTML + JS.
 - Works best in latest Chrome/Firefox.
+
+## Contributor Note (AI Index)
+
+When you change code under `src/`, please update the AI index:
+
+- Edit `docs/ai/index.json` to add new anchors or files
+- Keep JSON valid; see `docs/ai/schema.json`
+- Short guide: `docs/ai/README.md`
+
+Validate locally:
+
+- `npm run validate:ai`
+
+More details in `CONTRIBUTING.md`.
