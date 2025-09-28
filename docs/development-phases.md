@@ -193,6 +193,8 @@ Recent changes (delta):
   - Post-launch support plan
 
 Housekeeping
-- Keep `docs/ai/index.json` anchors in sync with code changes
-- Update `.github/copilot-instructions.md` for guidelines and module contracts when interfaces change
-- Reflect directory structure changes in `README.md` and `CONTRIBUTING.md`
+- [x] Keep `docs/ai/index.json` anchors in sync with code changes
+- [x] Update `.github/copilot-instructions.md` for guidelines and module contracts when interfaces change
+- [x] Reflect directory structure changes in `README.md` and `CONTRIBUTING.md`
+- [x] Remove obsolete/duplicate files (cleaned up old scene files)
+- [x] Add missing AI-INDEX tags to core files

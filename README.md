@@ -10,12 +10,16 @@ Top-down 2D action-adventure built with Phaser 3.
 
 ## Quickstart (local)
 
-1. Serve the repo root with any static server.
-2. Open http://localhost:8010 (or your chosen port).
+1. Clone the repository
+2. Install dependencies: `npm install`
+3. Start development server: `npm run dev`
+4. Open http://localhost:5173 (default Vite port)
+
+For production build: `npm run build`
 
 Notes:
-- No build step required; static HTML + JS.
-- Works best in latest Chrome/Firefox.
+- Built with Vite + TypeScript/JavaScript
+- Works best in latest Chrome/Firefox
 
 ## Contributor Note (AI Index)
 
@@ -30,6 +34,27 @@ Validate locally:
 - `npm run validate:ai`
 
 More details in `CONTRIBUTING.md`.
+
+## Project Structure
+
+```
+src/
+├── game.ts                 # Game entry point, Phaser configuration
+├── main.js                 # Main scene with game logic
+├── constants.js            # Centralized constants and IDs
+├── lib/                    # Core systems and utilities
+│   ├── world.js           # World generation, objects placement
+│   ├── enemies.js         # Enemy system and AI
+│   ├── inventory.js       # Inventory management
+│   ├── economy.js         # Currency and wallet system
+│   ├── combat.js          # Combat mechanics
+│   ├── buildings.js       # Procedural building generation
+│   ├── transitions.js     # Map transitions and effects
+│   └── ui.js             # UI helpers and modals
+└── scenes/                # Game scenes
+    ├── UIScene.js         # HUD and UI overlay
+    └── TestScene.js       # Development testing scene
+```
 
 ## Project Docs
 

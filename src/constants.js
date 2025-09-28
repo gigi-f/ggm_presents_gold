@@ -1,3 +1,9 @@
+/*
+ AI-INDEX
+ - Tags: engine.constants
+ - See: docs/ai/index.json
+*/
+
 // Centralized constants to avoid stringly-typed keys and typos
 
 // Scene keys

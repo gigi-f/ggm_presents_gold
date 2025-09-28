@@ -1,7 +1,7 @@
 {
   "$schema": "./schema.json",
   "version": 1,
-  "updated": "2025-09-26",
+  "updated": "2025-09-28",
   "project": "Gold Hunter",
   "summary": "Top-down 2D action-adventure built with Phaser 3. AI index for quick code navigation.",
   "entryPoints": {
@@ -18,6 +18,15 @@
     "constants": ["src/constants.js", "src/lib/constants.ts"]
   },
   "tags": [
+    {
+      "id": "engine.constants",
+      "label": "Constants & configuration",
+      "files": ["src/constants.js", "src/lib/constants.ts"],
+      "anchors": [
+        { "file": "src/constants.js", "contains": ["SCENES", "MAP_IDS", "DOOR_IDS"], "note": "Scene keys, map identifiers, door registry" },
+        { "file": "src/lib/constants.ts", "contains": ["MAIN", "UI", "TEST"], "note": "TypeScript constants" }
+      ]
+    },
     {
       "id": "ui.framework",
       "label": "Unified UI helpers and registry",
