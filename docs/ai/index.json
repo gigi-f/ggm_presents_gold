@@ -15,9 +15,6 @@
     "inventory": "src/lib/inventory.js",
     "combat": "src/lib/combat.js",
     "economy": "src/lib/economy.js",
-    "audio": "src/lib/audio.js",
-    "animations": "src/lib/animations.js",
-    "particles": "src/lib/particles.js",
     "constants": ["src/constants.js", "src/lib/constants.ts"]
   },
   "tags": [
@@ -106,37 +103,6 @@
         { "file": "src/lib/world.js", "contains": ["placeObjectOnGrid", "spawnCurrency"], "note": "Currency objects & ids" },
         { "file": "src/main.js", "contains": ["pickupCurrency", "initWallet"], "note": "Wallet wiring" },
         { "file": "src/scenes/UIScene.js", "contains": ["updateCurrency"], "note": "HUD totals & icons" }
-      ]
-    },
-    {
-      "id": "mechanics.audio",
-      "label": "Audio system (music, SFX, spatial audio)",
-      "files": ["src/lib/audio.js", "src/main.js", "src/lib/combat.js", "src/lib/enemies.js"],
-      "anchors": [
-        { "file": "src/lib/audio.js", "contains": ["AudioManager", "playMusic", "playSFX", "playPlayerAction"], "note": "Audio manager, music transitions, spatial SFX" },
-        { "file": "src/main.js", "contains": ["audioManager", "updateMusicForMap", "openAudioSettings"], "note": "Audio integration & settings UI" },
-        { "file": "src/lib/combat.js", "contains": ["playPlayerAction(scene, 'swing')"], "note": "Combat sound effects" },
-        { "file": "src/lib/enemies.js", "contains": ["playEnemyAction"], "note": "Enemy hit & death sounds" }
-      ]
-    },
-    {
-      "id": "mechanics.animations",
-      "label": "Character animations (movement, combat, effects)",
-      "files": ["src/lib/animations.js", "src/main.js"],
-      "anchors": [
-        { "file": "src/lib/animations.js", "contains": ["CharacterAnimator", "ANIMATION_STATES", "updateCharacterAnimation"], "note": "Animation system, states, tweened movement effects" },
-        { "file": "src/main.js", "contains": ["characterAnimator", "createCharacterAnimator", "playPlayerHitAnimation"], "note": "Animation integration and player state updates" }
-      ]
-    },
-    {
-      "id": "mechanics.particles",
-      "label": "Particle system (visual effects, combat feedback)",
-      "files": ["src/lib/particles.js", "src/main.js", "src/lib/combat.js", "src/lib/enemies.js"],
-      "anchors": [
-        { "file": "src/lib/particles.js", "contains": ["ParticleSystem", "PARTICLE_TYPES", "createHitEffect"], "note": "Particle manager, effect types, visual feedback" },
-        { "file": "src/main.js", "contains": ["particleSystem", "createCurrencySparkle", "createEnvironmentalDust"], "note": "Particle integration and environmental effects" },
-        { "file": "src/lib/combat.js", "contains": ["createWeaponTrail"], "note": "Combat particle effects" },
-        { "file": "src/lib/enemies.js", "contains": ["createHitEffect", "createDeathEffect"], "note": "Enemy combat particles" }
       ]
     },
     {

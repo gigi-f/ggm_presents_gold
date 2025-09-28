@@ -88,19 +88,8 @@ export function addTitle(scene, modal, text, style = { fontSize: '12px', color: 
 // Simple global UI registry to manage open UIs and input gating
 export const UI = {
   _open: new Set(),
-  _stack: [],
-  open(name) {
-    this._open.add(name);
-    this._stack.push(name);
-  },
-  close(name) {
-    this._open.delete(name);
-    // Remove the most recent occurrence from stack
-    for (let i = this._stack.length - 1; i >= 0; i--) {
-      if (this._stack[i] === name) { this._stack.splice(i, 1); break; }
-    }
-  },
+  open(name) { this._open.add(name); },
+  close(name) { this._open.delete(name); },
   anyOpen() { return this._open.size > 0; },
-  names() { return Array.from(this._open.values()); },
-  top() { return this._stack[this._stack.length - 1] || null; }
+  names() { return Array.from(this._open.values()); }
 };

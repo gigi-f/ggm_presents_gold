@@ -3,20 +3,6 @@
 Last updated: 2025-09-27
 
 Recent changes (delta):
-- **MAJOR: Complete Audio Integration System** - AudioManager with music transitions, spatial SFX, volume controls
-- **MAJOR: Character Animation System** - CharacterAnimator with state-based movement, attack, and hit animations  
-- **MAJOR: Particle System** - Environmental effects, combat feedback, visual polish with 6 particle types
-- Audio: Background music changes by map type (overworld, shop, cave); fade in/out transitions
-- Audio: Sound effects for all player actions (swing, shield, hit, pickup) with spatial positioning
-- Audio: Enemy sounds (hit, death) with distance-based volume falloff  
-- Audio: UI sounds for menus, doors, shop purchases with audio feedback
-- Audio: Settings dialog in pause menu with volume sliders (Master, Music, SFX) and audio toggle
-- Audio: Persistent settings saved to localStorage; performance-optimized with sound instance limits
-- Animations: Smooth player movement with directional bob effects and idle breathing
-- Animations: Attack animations with wind-up, strike, and recoil based on direction
-- Animations: Hit/damage animations with screen shake and color effects
-- Particles: Combat hit effects, weapon trails, currency sparkles, enemy death explosions
-- Particles: Environmental dust for atmosphere, optimized with lifecycle management (200 particle limit)
 - Fixed shopkeeper persistence: always re-created on shop entry; cleaned stale references on map rebuild so the NPC never disappears
 - Implemented shopkeeper with full-screen shop UI (wallet display, item pricing, pagination, A/D nav, C to close)
 - Added modular enemy system with a bat enemy; enemies freeze during transitions and respect combat
@@ -158,20 +144,20 @@ Recent changes (delta):
 
 ### Phase 5: Polish and Enhancement
 - [~] Visual Improvements
-  - [x] Character animations (idle, walking, attacking, hit reactions)
-  - [x] Environmental effects (atmospheric dust particles, ambient world effects)
-  - [x] Particle systems (combat feedback, currency sparkles, death effects)
+  - Character animations
+  - [ ] Environmental effects
+  - [ ] Particle systems
   - [x] UI polish (shop overlay, affordability, word-wrap)
   - [x] Transition effects (scroll, freeze enemies)
 
-- [x] Audio Integration
-  - [x] Background music (context-aware, smooth transitions)
-  - [x] Sound effects
-    - [x] Player actions (swing, shield, movement feedback)
-    - [x] Enemy sounds (hit, death with spatial audio)
-    - [x] Environmental audio (pickup sounds, door transitions)
-  - [x] Audio mixing (volume controls, settings persistence)
-  - [x] Dynamic audio system (map-based music, spatial positioning)
+- [ ] Audio Integration
+  - Background music
+  - Sound effects
+    - Player actions
+    - Enemy sounds
+    - Environmental audio
+  - Audio mixing
+  - Dynamic audio system
 
 - [ ] Additional Features
   - Weather system
