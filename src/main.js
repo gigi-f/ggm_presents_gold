@@ -64,6 +64,10 @@ export class MainScene extends Phaser.Scene {
     this.meleeWeaponSprite = null;
     this.health = 100;
     this.maxHealth = 100;
+  // Gold ingots (win condition)
+  this.goldIngotsCount = 0;
+  this.goldGoal = 11;
+  this.collectedGoldIds = new Set();
   // Stamina system
   this.stamina = 100;
   this.maxStamina = 100;
@@ -397,6 +401,23 @@ export class MainScene extends Phaser.Scene {
       console.log(`Picked up ${type} ingot! Total currency: ${this.wallet?.total ?? 0}p`);
     }
 
+    // Gold ingot pickup (not currency). Increments count toward win condition.
+    pickupGoldIngot(player, gold) {
+      const id = gold.goldId || null;
+      if (!this.collectedGoldIds) this.collectedGoldIds = new Set();
+      if (id && this.collectedGoldIds.has(id)) { try { gold.destroy(); } catch {} return; }
+      this.goldIngotsCount = (this.goldIngotsCount || 0) + 1;
+      if (id) this.collectedGoldIds.add(id);
+      try { gold.destroy(); } catch {}
+      // Update HUD
+      try { this.scene.get(SCENES.UI)?.updateGoldIngots?.(this.goldIngotsCount, this.goldGoal); } catch {}
+      console.log(`Collected GOLD ingot ${id || ''} -> ${this.goldIngotsCount}/${this.goldGoal}`);
+      // Win check
+      if (this.goldIngotsCount >= (this.goldGoal || 11)) {
+        this.showWinModal?.();
+      }
+    }
+
     swingMeleeWeapon() { return Combat.swingMeleeWeapon(this); }
 
     raiseShield() { return Combat.raiseShield(this); }
@@ -499,6 +520,8 @@ export class MainScene extends Phaser.Scene {
               if (this.scene.get(SCENES.UI).updateStaminaBar) {
                 this.scene.get(SCENES.UI).updateStaminaBar(this.stamina, this.maxStamina);
               }
+            // Initialize gold ingot HUD
+            this.scene.get(SCENES.UI).updateGoldIngots?.(this.goldIngotsCount || 0, this.goldGoal || 11);
         
         // Use a small delay to ensure UI is fully ready before equipping and updating
         this.time.delayedCall(50, () => {
@@ -990,6 +1013,7 @@ export class MainScene extends Phaser.Scene {
             shield3: !!(this.collectedItems?.shield3)
           },
           collectedCurrency: Array.from(this.collectedCurrency || []),
+          gold: { count: this.goldIngotsCount || 0, goal: this.goldGoal || 11, ids: Array.from(this.collectedGoldIds || []) },
           player: { x: Math.round(this.player.x), y: Math.round(this.player.y), hp: this.health, maxHp: this.maxHealth },
           stamina: { s: Math.round(this.stamina), m: this.maxStamina },
           wallet: this.wallet || { total: 0, counts: { copper: 0, silver: 0 } },
@@ -1056,12 +1080,37 @@ export class MainScene extends Phaser.Scene {
           const w = this.wallet || { total: 0, counts: { copper: 0, silver: 0 } };
           ui.updateCurrency(w.total || 0, w.counts.copper || 0, w.counts.silver || 0);
           ui.updateStaminaBar?.(this.stamina, this.maxStamina);
+          ui.updateGoldIngots?.(this.goldIngotsCount || 0, this.goldGoal || 11);
           this.updateEquipmentHUD();
         }
         console.log('Game loaded.');
       } catch (e) {
         console.warn('Load failed', e);
       }
+    }
+
+    // Simple win modal
+    showWinModal() {
+      if (UIRegistry.anyOpen && UIRegistry.anyOpen()) return; // avoid stacking
+      UIRegistry.open?.('win');
+      const modal = createModal(this, { coverHUD: true, depthBase: 800, outerMargin: 10, padTop: 20, padBottom: 18 });
+      const title = addTitle(this, modal, 'You Win!', { fontSize: '16px', color: '#ffff66' });
+      const msg = this.add.text(modal.center.x, modal.center.y, `You collected all ${this.goldGoal} gold ingots!`, { fontSize: '12px', color: '#ffffff', align: 'center', wordWrap: { width: modal.content.width() - 20 } }).setOrigin(0.5).setDepth(802);
+      const hint = this.add.text(modal.center.x, modal.content.bottom, 'Press ESC to close', { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5, 1).setDepth(803);
+      this.winModal = { modal, title, msg, hint };
+      try { this.physics.world.pause(); } catch {}
+      try { this.tweens.pauseAll(); } catch {}
+      // Hook ESC to close if not already handled by general ESC handler
+      const close = () => {
+        UIRegistry.close?.('win');
+        [title, msg, hint].forEach(n => { try { n?.destroy(); } catch {} });
+        try { modal?.destroy(); } catch {}
+        this.winModal = null;
+        try { this.physics.world.resume(); } catch {}
+        try { this.tweens.resumeAll(); } catch {}
+      };
+      // If ESC is pressed and no higher-priority UI, let global handler close via stack
+      this.closeWinModal = close;
     }
 
     // --- Mini-map overlay helpers ---

@@ -87,6 +87,20 @@ export function placeObjectOnGrid(scene, gridX, gridY, objectType, addToGroup = 
       if (scene.worldLayer) scene.worldLayer.add(obj);
       break;
     }
+    case 'goldIngot': {
+      // Gold ingot collectible (win condition, not currency)
+      const w = extraData.width || 10;
+      const h = extraData.height || 6;
+      const color = extraData.color || 0xffd700;
+      obj = scene.add.rectangle(worldPos.x, worldPos.y, w, h, color);
+      scene.physics.add.existing(obj);
+      obj.body.setImmovable(true);
+      obj.isGoldIngot = true;
+      obj.goldId = extraData.goldId || null;
+      obj.setDepth(1);
+      if (scene.worldLayer) scene.worldLayer.add(obj);
+      break;
+    }
     case 'shield': {
       obj = scene.add.rectangle(worldPos.x, worldPos.y, extraData.width, extraData.height, extraData.color);
       scene.physics.add.existing(obj);
@@ -442,6 +456,17 @@ export function createMapObjects(scene, options = {}) {
     };
     scene.copperIngot1 = spawnCurrency('overworld1:copper1', 10, 5, 'copper');
     scene.silverIngot1 = spawnCurrency('overworld1:silver1', 11, 5, 'silver');
+
+    // Example GOLD ingot (win-condition collectible) placed in the starting map tile
+    const spawnGold = (id, gx, gy) => {
+      if (scene.collectedGoldIds && scene.collectedGoldIds.has(id)) return;
+      const obj = placeObjectOnGrid(scene, gx, gy, 'goldIngot', null, { goldId: id, width: 12, height: 6, color: 0xffd700 });
+      if (obj) obj.goldId = id;
+      return obj;
+    };
+    // Place near center but slightly offset so it doesn't overlap spawn
+  // Place away from player spawn (player spawns around grid ~12,9)
+  scene.goldIngot1 = spawnGold('gold:ow1:1', 16, 12);
   } else if (scene.currentMap === MAP_IDS.OVERWORLD_02) {
     
     placeObjectOnGrid(scene, 10, 3, 'treeTrunkLarge', scene.treeTrunks);
@@ -550,6 +575,7 @@ export function createMapObjects(scene, options = {}) {
   }
   if (scene.copperIngot1) scene.physics.add.overlap(scene.player, scene.copperIngot1, scene.pickupCurrency, null, scene);
   if (scene.silverIngot1) scene.physics.add.overlap(scene.player, scene.silverIngot1, scene.pickupCurrency, null, scene);
+  if (scene.goldIngot1) scene.physics.add.overlap(scene.player, scene.goldIngot1, scene.pickupGoldIngot, null, scene);
 
   if (scene.gridVisible) createGridVisualization(scene);
 }

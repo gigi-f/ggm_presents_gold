@@ -22,6 +22,10 @@ export class UIScene extends Phaser.Scene {
         this.copperIngotIcon = null;
         this.silverIngotIcon = null;
 
+    // Gold ingot counter (win-condition)
+    this.goldIcon = null;
+    this.goldText = null;
+
       // Stamina bar elements
       this.staminaBg = null;
       this.staminaFill = null;
@@ -39,6 +43,9 @@ export class UIScene extends Phaser.Scene {
 
     // Create stamina display
     this.createStaminaBar();
+
+        // Create gold ingot counter
+        this.createGoldCounter();
         
         // Make sure UI stays on top
         this.scene.bringToTop();
@@ -194,6 +201,27 @@ export class UIScene extends Phaser.Scene {
         this.staminaFill.setScrollFactor(0);
         this.staminaFill.setDepth(2);
         this.staminaFill.setAlpha(0.95);
+    }
+
+    createGoldCounter() {
+        const x = 260; // to the right of currency
+        const y = 8;
+        this.goldIcon = this.add.rectangle(x, y, 8, 5, 0xffd700);
+        this.goldIcon.setScrollFactor(0);
+        this.goldIcon.setDepth(2);
+        this.goldIcon.setAlpha(0.95);
+        this.goldText = this.add.text(x + 8 + 4, y, '0/11', { fontSize: '8px', fill: '#ffffff', align: 'left' });
+        this.goldText.setOrigin(0, 0.5);
+        this.goldText.setScrollFactor(0);
+        this.goldText.setDepth(2);
+        this.goldText.setAlpha(0.95);
+    }
+
+    updateGoldIngots(count, goal) {
+        if (!this.goldText) return;
+        const g = Math.max(0, count || 0);
+        const tgt = Math.max(1, goal || 11);
+        this.goldText.setText(`${g}/${tgt}`);
     }
 
     updateStaminaBar(stamina, max) {
