@@ -79,9 +79,14 @@ function createBat(scene, x, y, opts) {
   bat.speed = opts.speed ?? 90;
   bat.leash = opts.leash ?? 160;
   bat.damage = opts.damage ?? 10;
-  bat.playerKnockback = opts.playerKnockback ?? 120;
+  // Player knockback when bat hits the player
+  bat.playerKnockback = opts.playerKnockback ?? 240; // default ~2x previous
+  bat.playerKnockbackMs = opts.playerKnockbackMs ?? 200; // how long player control is damped
+  bat.playerKnockbackDamping = opts.playerKnockbackDamping ?? 0.9;
   bat.playerIFrameMs = opts.playerIFrameMs ?? 400;
   bat.knockbackDamping = opts.knockbackDamping ?? 0.9; // per-frame velocity multiplier while stunned
+  // Pause the bat briefly after it hits the player (shorter for tougher enemies)
+  bat.postHitPauseMs = opts.postHitPauseMs ?? 180;
   bat.hitCooldownMs = 600;
   bat._nextHitAt = 0;
   bat.persistentAcrossMaps = !!opts.persistentAcrossMaps;
@@ -211,8 +216,13 @@ function createSlime(scene, x, y, opts) {
   slime.health = slime.maxHealth;
   slime.speed = opts.speed ?? 60;
   slime.damage = opts.damage ?? 6;
+  // Player knockback when slime hits the player (simple enemy -> longer pause/knockback OK)
+  slime.playerKnockback = opts.playerKnockback ?? 240;
+  slime.playerKnockbackMs = opts.playerKnockbackMs ?? 240;
+  slime.playerKnockbackDamping = opts.playerKnockbackDamping ?? 0.9;
   slime.playerIFrameMs = opts.playerIFrameMs ?? 400;
   slime.knockbackDamping = opts.knockbackDamping ?? 0.9;
+  slime.postHitPauseMs = opts.postHitPauseMs ?? 300;
   slime.aggroRadius = opts.aggroRadius ?? 56;
   slime.deaggroRadius = opts.deaggroRadius ?? 110;
   slime.wanderCooldown = 0;
@@ -347,12 +357,15 @@ function attemptEnemyDamagePlayer(scene, enemy) {
     if (scene.player?.body) {
       const dx = scene.player.x - enemy.x; const dy = scene.player.y - enemy.y;
       const len = Math.hypot(dx, dy) || 1;
-      const kb = enemy.playerKnockback ?? 120;
+      const kb = enemy.playerKnockback ?? 240;
       // Set initial knockback impulse
       scene.player.body.setVelocity((dx / len) * kb, (dy / len) * kb);
       // Mark knockback window so main update won't override movement
-      scene.playerKnockbackUntil = now + (enemy.playerKnockbackMs ?? 180);
+      scene.playerKnockbackUntil = now + (enemy.playerKnockbackMs ?? 200);
       scene.playerKnockbackDamping = enemy.playerKnockbackDamping ?? 0.9;
+      // Briefly pause the enemy itself after a successful hit
+      if (enemy.body) enemy.body.setVelocity(0, 0);
+      enemy.stunUntil = Math.max(enemy.stunUntil ?? 0, now + (enemy.postHitPauseMs ?? 220));
     }
   } catch {}
   return true;
