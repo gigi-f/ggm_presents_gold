@@ -19,6 +19,25 @@
   },
   "tags": [
     {
+      "id": "ui.framework",
+      "label": "Unified UI helpers and registry",
+      "files": ["src/lib/ui.js", "src/main.js", "src/lib/inventory.js"],
+      "anchors": [
+        { "file": "src/lib/ui.js", "contains": ["createModal", "addTitle", "export const UI"], "note": "Modal builder, title helper, UI registry" },
+        { "file": "src/main.js", "contains": ["UI as UIRegistry", "openShopDialog", "openPauseMenu"], "note": "Using shared UI + gating" },
+        { "file": "src/lib/inventory.js", "contains": ["showInventory", "hideInventory"], "note": "Inventory modal + registry open/close" }
+      ]
+    },
+    {
+      "id": "ui.worldmap",
+      "label": "World Map (visited fog-of-war)",
+      "files": ["src/main.js", "src/lib/ui.js"],
+      "anchors": [
+        { "file": "src/main.js", "contains": ["toggleWorldMap", "buildWorldMapContainer", "visitedMaps"], "note": "Modal world map with visited-only reveal (O to toggle)" },
+        { "file": "src/lib/ui.js", "contains": ["createModal", "addTitle", "export const UI"], "note": "Shared modal and registry for world map overlay" }
+      ]
+    },
+    {
       "id": "mechanics.doors",
       "label": "Door system & map transitions",
       "files": ["src/lib/world.js", "src/lib/transitions.js"],
@@ -57,6 +76,16 @@
       ]
     },
     {
+      "id": "mechanics.stamina",
+      "label": "Stamina (regen, drains, HUD)",
+      "files": ["src/main.js", "src/scenes/UIScene.js", "src/lib/combat.js"],
+      "anchors": [
+        { "file": "src/main.js", "contains": ["stamina", "staminaRegenPerSec", "updateStaminaBar"], "note": "Scene state + HUD push" },
+        { "file": "src/scenes/UIScene.js", "contains": ["createStaminaBar", "updateStaminaBar"], "note": "HUD stamina bar" },
+        { "file": "src/lib/combat.js", "contains": ["Too exhausted to swing"], "note": "Swing costs stamina" }
+      ]
+    },
+    {
       "id": "mechanics.economy",
       "label": "Economy (currencies, wallet, HUD)",
       "files": ["src/lib/economy.js", "src/lib/world.js", "src/scenes/UIScene.js", "src/main.js"],
@@ -83,6 +112,24 @@
         { "file": "src/game.ts", "contains": ["new Phaser.Game", "scene"], "note": "Game config" },
         { "file": "src/main.js", "contains": "create(", "note": "Main scene lifecycle (see also transitionToMap & createMapObjects)" },
         { "file": "src/scenes/UIScene.js", "contains": "events.emit('create')", "note": "UI lifecycle & ready signal" }
+      ]
+    }
+    ,
+    {
+      "id": "ui.minimap",
+      "label": "Mini-map overlay",
+      "files": ["src/main.js"],
+      "anchors": [
+        { "file": "src/main.js", "contains": ["toggleMiniMap", "buildMiniMapContainer", "refreshMiniMap", "updateMiniMapEntities"], "note": "HUD overlay + markers (doors/enemies/NPCs)" }
+      ]
+    }
+    ,
+    {
+      "id": "engine.save",
+      "label": "Save/Load",
+      "files": ["src/main.js"],
+      "anchors": [
+        { "file": "src/main.js", "contains": ["saveGame()", "loadGame()"], "note": "localStorage v1 schema from Pause Menu" }
       ]
     }
   ]

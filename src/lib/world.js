@@ -76,14 +76,7 @@ export function placeObjectOnGrid(scene, gridX, gridY, objectType, addToGroup = 
   const worldPos = gridToWorld(scene, gridX, gridY);
   let obj = null;
   switch (objectType) {
-    case 'bush': {
-      obj = scene.add.circle(worldPos.x, worldPos.y, 12, 0x228b22);
-      scene.physics.add.existing(obj);
-      obj.body.setImmovable(true);
-      if (addToGroup) addToGroup.add(obj);
-      if (scene.worldLayer) scene.worldLayer.add(obj);
-      break;
-    }
+    
     case 'weapon': {
       obj = scene.add.rectangle(worldPos.x, worldPos.y, extraData.width, extraData.height, extraData.color);
       scene.physics.add.existing(obj);
@@ -288,9 +281,7 @@ export function createMapObjects(scene, options = {}) {
   if (!options.buildIntoExistingWorldLayer || !scene.worldLayer) scene.worldLayer = scene.add.container(0, 0);
   scene.activeDoors = {};
   if (!scene.boundaryRocks) scene.boundaryRocks = scene.add.group();
-  if (!scene.mapBushes) scene.mapBushes = scene.add.group();
   if (!scene.treeTrunks) scene.treeTrunks = scene.add.group();
-  if (!scene.stumps) scene.stumps = scene.add.group();
   if (!scene.buildingWalls) scene.buildingWalls = scene.add.group();
   if (!scene.enemiesGroup) scene.enemiesGroup = scene.add.group();
   // Clear previous building wall colliders to avoid stale collision blocking
@@ -415,8 +406,6 @@ export function createMapObjects(scene, options = {}) {
 
   if (scene.currentMap === MAP_IDS.OVERWORLD_01) {
     scene.treeTrunks.clear();
-    scene.stumps.clear();
-    placeObjectOnGrid(scene, 9, 5, 'bush', scene.mapBushes);
     // Items moved to shop - overworld is now clear of weapons/shields
     
     // Add currency ingots (scalable via IDs)
@@ -429,26 +418,25 @@ export function createMapObjects(scene, options = {}) {
     scene.copperIngot1 = spawnCurrency('overworld1:copper1', 10, 5, 'copper');
     scene.silverIngot1 = spawnCurrency('overworld1:silver1', 11, 5, 'silver');
   } else if (scene.currentMap === MAP_IDS.OVERWORLD_02) {
-    scene.stumps.clear();
-    placeObjectOnGrid(scene, 6, 7, 'bush', scene.mapBushes);
-    placeObjectOnGrid(scene, 13, 11, 'bush', scene.mapBushes);
+    
     placeObjectOnGrid(scene, 10, 3, 'treeTrunkLarge', scene.treeTrunks);
     placeObjectOnGrid(scene, 5, 12, 'treeTrunkSmall', scene.treeTrunks);
     placeObjectOnGrid(scene, 16, 8, 'treeTrunkMedium', scene.treeTrunks);
+    // Add a couple of slimes
+    try {
+      Enemies.spawnSlimeAtGrid(scene, 7, 5, { speed: 60 });
+      Enemies.spawnSlimeAtGrid(scene, 14, 11, { speed: 50 });
+    } catch (e) { console.warn('Failed to spawn slime:', e); }
   } else if (scene.currentMap === MAP_IDS.OVERWORLD_00) {
     scene.treeTrunks.clear();
-    scene.stumps.clear();
     // Sparse props to differentiate visually
-    placeObjectOnGrid(scene, 6, 6, 'bush', scene.mapBushes);
     placeObjectOnGrid(scene, 12, 8, 'treeTrunkSmall', scene.treeTrunks);
-    placeObjectOnGrid(scene, 16, 6, 'bush', scene.mapBushes);
     // Place a bat perched on a tree just north of the trunk (sitting in the canopy)
     try {
       Enemies.spawnBatAtGrid(scene, 12, 7, { aggroRadius: 64, deaggroRadius: 120, speed: 90, leash: 160, damage: 10, persistentAcrossMaps: false });
     } catch (e) { console.warn('Failed to spawn bat:', e); }
   } else if (scene.currentMap === MAP_IDS.SHOP_01) {
     scene.treeTrunks.clear();
-    scene.stumps.clear();
     // Shop is now clear of obstacles - place all items here instead
     // Create a counter to block access to items behind it
     if (!scene.shopCounter) {
@@ -511,7 +499,6 @@ export function createMapObjects(scene, options = {}) {
 
   createDoorsForMap(scene);
   scene.physics.add.collider(scene.player, scene.boundaryRocks);
-  scene.physics.add.collider(scene.player, scene.mapBushes);
   scene.physics.add.collider(scene.player, scene.treeTrunks);
   scene.physics.add.collider(scene.player, scene.buildingWalls);
   if (scene.shopCounter) scene.physics.add.collider(scene.player, scene.shopCounter);

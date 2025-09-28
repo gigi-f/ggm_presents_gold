@@ -9,6 +9,14 @@ export function swingMeleeWeapon(scene) {
   if (!scene.hasMeleeWeapon) { console.log('Cannot swing melee weapon - no weapon equipped!'); return; }
   if (scene.meleeWeaponSwinging) { console.log('Cannot swing melee weapon - already swinging!'); return; }
   if (scene.shieldRaised) { console.log('Cannot swing melee weapon - shield is raised! Lower shield first.'); return; }
+  // Stamina gate
+  if (typeof scene.stamina === 'number') {
+    const cost = 15; // swing cost
+    if (scene.stamina < cost) { console.log('Too exhausted to swing!'); return; }
+    scene.stamina = Math.max(0, scene.stamina - cost);
+    const ui = scene.scene.get('UIScene');
+    if (ui && ui.updateStaminaBar) ui.updateStaminaBar(Math.round(scene.stamina), scene.maxStamina || 100);
+  }
   scene.meleeWeaponSwinging = true;
   console.log(`Swinging ${scene.meleeWeaponName} in direction:`, scene.lastDirection);
 
@@ -53,22 +61,6 @@ export function swingMeleeWeapon(scene) {
     ease: 'Power2',
     onUpdate: () => updateMeleeWeaponPosition(scene),
     onComplete: () => { scene.meleeWeaponSprite.setVisible(false); }
-  });
-
-  const allBushes = [];
-  if (scene.mapBushes) {
-    scene.mapBushes.children.entries.forEach(bush => { if (bush.active) allBushes.push(bush); });
-  }
-  allBushes.forEach(bush => {
-    const distance = Phaser.Math.Distance.Between(scene.player.x, scene.player.y, bush.x, bush.y);
-    if (distance < 30) {
-      const bushX = bush.x, bushY = bush.y;
-      bush.destroy();
-      const stump = scene.add.circle(bushX, bushY, 8, 0x8B4513);
-      stump.setDepth(-1);
-      scene.stumps.add(stump);
-      console.log('Cut down bush! Left behind a stump.');
-    }
   });
 
   // Damage enemies within melee arc during the swing window

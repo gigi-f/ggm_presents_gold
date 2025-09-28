@@ -21,6 +21,10 @@ export class UIScene extends Phaser.Scene {
         this.currencyText = null;
         this.copperIngotIcon = null;
         this.silverIngotIcon = null;
+
+      // Stamina bar elements
+      this.staminaBg = null;
+      this.staminaFill = null;
     }
 
     create() {
@@ -32,12 +36,20 @@ export class UIScene extends Phaser.Scene {
         
         // Create currency display
         this.createCurrencyDisplay();
+
+    // Create stamina display
+    this.createStaminaBar();
         
         // Make sure UI stays on top
         this.scene.bringToTop();
         
         // Emit the create event to signal that the UI is ready
         this.events.emit('create');
+        // Initialize stamina bar to full if MainScene is accessible
+        const main = this.scene.get('MainScene');
+        if (main && typeof main.stamina === 'number') {
+            this.updateStaminaBar(main.stamina, main.maxStamina || 100);
+        }
     }
 
   createHealthStars() {
@@ -66,16 +78,21 @@ export class UIScene extends Phaser.Scene {
             fullStar.setDepth(2);
             fullStar.setAlpha(0.9); // 90% opacity
             
-            // Create half star using a graphics object for better control
-            const halfStarGraphics = this.add.graphics();
-            halfStarGraphics.setScrollFactor(0);
-            halfStarGraphics.setDepth(2);
-            halfStarGraphics.setAlpha(0.9); // 90% opacity
+            // Create a geometry mask to reveal the left half of the star when needed
+            const halfRect = this.add.graphics();
+            halfRect.setScrollFactor(0);
+            halfRect.setDepth(3); // mask source depth doesn't affect result, keep above for clarity
+            halfRect.fillStyle(0xffffff, 1);
+            // Star approximately 20px tall, 16px wide at outer radius 8; mask left half
+            halfRect.fillRect(x - 10, startY - 10, 10, 20);
+            halfRect.setVisible(false); // graphics used only as mask source
+            const halfMask = halfRect.createGeometryMask();
             
             this.healthStars.push({
                 background: starBg,
                 full: fullStar,
-                half: halfStarGraphics,
+                halfMask,
+                halfRect,
                 x: x,
                 y: startY
             });
@@ -162,6 +179,34 @@ export class UIScene extends Phaser.Scene {
         this.silverIngotIcon.setAlpha(0.8);
     }
 
+    createStaminaBar() {
+        const startX = 20;
+        const startY = 22; // just under health stars in HUD
+        const width = 100;
+        const height = 4;
+        this.staminaBg = this.add.rectangle(startX, startY, width, height, 0x222222);
+        this.staminaBg.setOrigin(0, 0.5);
+        this.staminaBg.setScrollFactor(0);
+        this.staminaBg.setDepth(1);
+        this.staminaBg.setAlpha(0.9);
+        this.staminaFill = this.add.rectangle(startX, startY, width, height, 0x00cc66);
+        this.staminaFill.setOrigin(0, 0.5);
+        this.staminaFill.setScrollFactor(0);
+        this.staminaFill.setDepth(2);
+        this.staminaFill.setAlpha(0.95);
+    }
+
+    updateStaminaBar(stamina, max) {
+        if (!this.staminaFill || !this.staminaBg) return;
+        const w = this.staminaBg.width;
+        const clamped = Math.max(0, Math.min(stamina, max));
+        const ratio = max > 0 ? clamped / max : 0;
+        this.staminaFill.width = Math.max(0, Math.round(w * ratio));
+        // Color shift: low stamina becomes more orange/red
+        const color = ratio > 0.5 ? 0x00cc66 : (ratio > 0.25 ? 0xff9900 : 0xcc3333);
+        this.staminaFill.setFillStyle(color);
+    }
+
     updateHealthBar(health, maxHealth) {
         if (!this.healthStars || this.healthStars.length === 0) {
             console.warn('Health stars not yet initialized');
@@ -176,26 +221,18 @@ export class UIScene extends Phaser.Scene {
             const star = this.healthStars[i];
             const starHealthNeeded = i + 1;
             
-            // Clear previous half star drawing
-            star.half.clear();
-            
             if (totalStarHealth >= starHealthNeeded) {
                 // Full star
                 star.full.setVisible(true);
+                star.full.clearMask();
             } else if (totalStarHealth >= starHealthNeeded - 0.5) {
-                // Half star - create a clipping effect
-                star.full.setVisible(false);
-                
-                // Draw a full gold star first
-                star.half.fillStyle(0xFFD700);
-                star.half.fillStar(star.x, star.y, 5, 4, 8);
-                
-                // Then draw a dark rectangle over the right half
-                star.half.fillStyle(0x444444);
-                star.half.fillRect(star.x, star.y - 10, 10, 20);
+                // Show only the left half of the star using the mask
+                star.full.setVisible(true);
+                star.full.setMask(star.halfMask);
             } else {
                 // Empty star (just background)
                 star.full.setVisible(false);
+                star.full.clearMask();
             }
         }
     }

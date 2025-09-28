@@ -19,6 +19,9 @@ export function createEnemy(scene, type, x, y, opts = {}) {
     case 'bat':
       enemy = createBat(scene, x, y, opts);
       break;
+    case 'slime':
+      enemy = createSlime(scene, x, y, opts);
+      break;
     default:
       console.warn('Unknown enemy type:', type);
   }
@@ -33,6 +36,9 @@ export function updateEnemies(scene, time, delta) {
     switch (enemy.enemyType) {
       case 'bat':
         updateBat(scene, enemy, time, delta);
+        break;
+      case 'slime':
+        updateSlime(scene, enemy, time, delta);
         break;
     }
   }
@@ -174,6 +180,68 @@ function updateBat(scene, bat, time, delta) {
 export function spawnBatAtGrid(scene, gridX, gridY, opts = {}) {
   const { x, y } = scene.gridToWorld(gridX, gridY);
   return createEnemy(scene, 'bat', x, y, { perchX: x, perchY: y, ...opts });
+}
+
+// ------------------ Slime ------------------
+
+function createSlime(scene, x, y, opts) {
+  const slime = scene.physics.add.sprite(x, y, null);
+  // Render as a simple colored rectangle using a graphics-generated texture
+  const g = scene.add.graphics();
+  g.fillStyle(0x44aa44, 1);
+  g.fillRect(0, 0, 12, 8);
+  const key = `slime_${Math.random().toString(36).slice(2, 7)}`;
+  g.generateTexture(key, 12, 8);
+  g.destroy();
+  slime.setTexture(key);
+  slime.enemyType = 'slime';
+  slime.setDepth(2);
+  slime.maxHealth = opts.maxHealth ?? 18;
+  slime.health = slime.maxHealth;
+  slime.speed = opts.speed ?? 60;
+  slime.damage = opts.damage ?? 6;
+  slime.aggroRadius = opts.aggroRadius ?? 56;
+  slime.deaggroRadius = opts.deaggroRadius ?? 110;
+  slime.wanderCooldown = 0;
+  slime.state = 'wander'; // 'wander' | 'chase'
+  slime.persistentAcrossMaps = !!opts.persistentAcrossMaps;
+  if (slime.body.setSize) slime.body.setSize(12, 8);
+  if (scene.worldLayer) { try { scene.worldLayer.add(slime); } catch {} }
+  try {
+    scene.physics.add.overlap(scene.player, slime, () => {
+      attemptEnemyDamagePlayer(scene, slime);
+    });
+  } catch {}
+  return slime;
+}
+
+function updateSlime(scene, slime, time, delta) {
+  if (!slime.body) return;
+  const px = scene.player?.x ?? slime.x;
+  const py = scene.player?.y ?? slime.y;
+  const dist = Phaser.Math.Distance.Between(slime.x, slime.y, px, py);
+  if (slime.state === 'wander' && dist <= slime.aggroRadius) slime.state = 'chase';
+  if (slime.state === 'chase' && dist > slime.deaggroRadius) slime.state = 'wander';
+
+  if (slime.state === 'chase') {
+    const dx = px - slime.x, dy = py - slime.y;
+    const len = Math.hypot(dx, dy) || 1;
+    slime.body.setVelocity((dx / len) * slime.speed, (dy / len) * slime.speed);
+  } else {
+    // Wander: choose a random small impulse every second
+    if (time >= slime.wanderCooldown) {
+      slime.wanderCooldown = time + 1000 + Math.random() * 800;
+      const angle = Math.random() * Math.PI * 2;
+      slime.body.setVelocity(Math.cos(angle) * (slime.speed * 0.6), Math.sin(angle) * (slime.speed * 0.6));
+    }
+    // friction
+    slime.body.setVelocity(slime.body.velocity.x * 0.98, slime.body.velocity.y * 0.98);
+  }
+}
+
+export function spawnSlimeAtGrid(scene, gridX, gridY, opts = {}) {
+  const { x, y } = scene.gridToWorld(gridX, gridY);
+  return createEnemy(scene, 'slime', x, y, { ...opts });
 }
 
 // ------------------ Shared combat helpers ------------------

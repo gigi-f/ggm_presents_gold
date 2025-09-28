@@ -20,7 +20,6 @@ class MainScene extends Phaser.Scene {
   debugText = null;
   swordSwingAngle = 0;
   swordSwinging = false;
-  bush = null;
   health = 100;
   maxHealth = 100;
 

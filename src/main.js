@@ -12,6 +12,7 @@ import * as Combat from './lib/combat.js';
 import { initWallet, addToWallet, spendFromWallet, getItemPrice, getWalletTotal } from './lib/economy.js';
 import { ensureProspectorTexture } from './lib/playerSprite.js';
 import { updateEnemies } from './lib/enemies.js';
+import { createModal, addTitle, UI as UIRegistry } from './lib/ui.js';
 
 export class MainScene extends Phaser.Scene {
   constructor() {
@@ -28,6 +29,7 @@ export class MainScene extends Phaser.Scene {
     this.transitionLock = false;
     this.isScrolling = false;
     this.worldLayer = null;
+  this.isPausedOverlay = false;
 
     // Player/inventory default state
     this.player = null;
@@ -60,10 +62,28 @@ export class MainScene extends Phaser.Scene {
     this.meleeWeaponSwingAngle = 0;
     this.meleeWeaponSwinging = false;
     this.meleeWeaponSprite = null;
-    this.bush = null;
-    this.stump = null;
     this.health = 100;
     this.maxHealth = 100;
+  // Stamina system
+  this.stamina = 100;
+  this.maxStamina = 100;
+  this.staminaRegenPerSec = 20; // points per second when not drained
+  this._lastStamina = this.stamina;
+  // Mini-map overlay (non-blocking)
+  this.miniMapVisible = false;
+  this.miniMapContainer = null;
+  this.miniMapCfg = { width: 100, margin: 6 };
+  this._miniMapLastMap = null;
+    // World map (visited tiles)
+    this.visitedMaps = new Set();
+    this.worldMapVisible = false;
+    this.worldMapContainer = null;
+    this.worldMapLayout = {
+      [MAP_IDS.OVERWORLD_00]: { gx: 0, gy: 0, type: 'overworld' },
+      [MAP_IDS.OVERWORLD_01]: { gx: 0, gy: 1, type: 'overworld' },
+      [MAP_IDS.OVERWORLD_02]: { gx: 1, gy: 1, type: 'overworld' },
+      [MAP_IDS.SHOP_01]:      { gx: 0, gy: 2, type: 'shop' }
+    };
 
     // Map graph
     this.maps = {
@@ -258,6 +278,8 @@ export class MainScene extends Phaser.Scene {
 
     // Smooth camera scroll transition when moving between adjacent overworld tiles
   scrollTransitionToMap(direction, newMapId, playerX, playerY) {
+      // Pre-mark target as visited so overworld map reveals upon arrival
+      try { this.visitedMaps.add(newMapId); } catch {}
       scrollXfer(this, direction, newMapId, playerX, playerY);
     }
 
@@ -471,6 +493,9 @@ export class MainScene extends Phaser.Scene {
             // Initialize currency HUD from wallet
             const w = this.wallet || { total: 0, counts: { copper: 0, silver: 0 } };
             this.scene.get(SCENES.UI).updateCurrency(w.total || 0, w.counts.copper || 0, w.counts.silver || 0);
+              if (this.scene.get(SCENES.UI).updateStaminaBar) {
+                this.scene.get(SCENES.UI).updateStaminaBar(this.stamina, this.maxStamina);
+              }
         
         // Use a small delay to ensure UI is fully ready before equipping and updating
         this.time.delayedCall(50, () => {
@@ -543,7 +568,7 @@ export class MainScene extends Phaser.Scene {
       this.input.keyboard.on('keydown-I', (event) => {
         if (event?.preventDefault) event.preventDefault();
         if (event?.stopPropagation) event.stopPropagation();
-        if (this.dialogOpen || this.isScrolling) {
+        if (this.isScrolling || UIRegistry.anyOpen()) {
           console.log('Inventory blocked while UI dialog or transition is active');
           return;
         }
@@ -556,6 +581,31 @@ export class MainScene extends Phaser.Scene {
         if (event?.stopPropagation) event.stopPropagation();
         console.log('P key pressed - toggling grid visibility');
         this.toggleGridVisibility();
+      });
+
+      // Mini-map toggle (non-modal HUD overlay)
+      this.input.keyboard.on('keydown-M', (event) => {
+        if (event?.preventDefault) event.preventDefault();
+        if (event?.stopPropagation) event.stopPropagation();
+        this.toggleMiniMap();
+      });
+
+      // Overworld Map overlay (visited tiles only)
+      this.input.keyboard.on('keydown-O', (event) => {
+        if (event?.preventDefault) event.preventDefault();
+        if (event?.stopPropagation) event.stopPropagation();
+        this.toggleWorldMap();
+      });
+
+      // Global Pause toggle with Escape (when no other UI is active)
+      this.input.keyboard.on('keydown-ESC', (event) => {
+        if (event?.preventDefault) event.preventDefault();
+        if (event?.stopPropagation) event.stopPropagation();
+        const names = (UIRegistry.names && UIRegistry.names()) || [];
+        // If another UI (e.g., shop) is open, let its own handler consume ESC
+        if (names.length > 0 && !names.includes('pause')) return;
+        if (names.includes('pause')) this.closePauseMenu();
+        else this.openPauseMenu();
       });
 
       this.input.keyboard.on('keydown-C', (event) => {
@@ -615,9 +665,8 @@ export class MainScene extends Phaser.Scene {
 
       // Create boundary rocks and map-specific objects
       this.createMapObjects();
-
-      // Set up collisions with main bush (will be handled in createMapObjects)
-      // this.physics.add.collider(this.player, this.bush);
+      // Mark initial map as visited for world map fog-of-war
+      try { this.visitedMaps.add(this.currentMap); } catch {}
 
       // Pre-warm the physics/renderer by doing a quick step
       this.time.delayedCall(16, () => {
@@ -632,6 +681,8 @@ export class MainScene extends Phaser.Scene {
 
     transitionToMap(newMapIndex, playerX, playerY) {
       this.currentMap = newMapIndex;
+      // Mark visited
+      try { this.visitedMaps.add(this.currentMap); } catch {}
       this.player.x = playerX;
       this.player.y = playerY;
       this.cameras.main.setBackgroundColor(this.maps[this.currentMap].color);
@@ -640,13 +691,17 @@ export class MainScene extends Phaser.Scene {
 
     update(time, delta) {
       if (!this.player) return;
-      // Block movement and map checks while the scroll transition runs or a dialog is open
-      if (this.isScrolling || this.dialogOpen) {
+      // Block movement and map checks while the scroll transition runs or a UI is open
+      if (this.isScrolling || UIRegistry.anyOpen()) {
         if (this.player.body) {
           this.player.body.setVelocity(0, 0);
         }
-        // Still tick enemies so they can settle/return while dialog
-        updateEnemies(this, time, delta);
+        // When a modal UI is open we normally let enemies settle, but if it's a hard Pause, skip updates entirely.
+        const openNames = UIRegistry.names ? UIRegistry.names() : [];
+        if (!openNames.includes('pause')) {
+          // Still tick enemies so they can settle/return while dialog
+          updateEnemies(this, time, delta);
+        }
         return;
       }
 
@@ -691,8 +746,44 @@ export class MainScene extends Phaser.Scene {
   
   // Overworld transitions are handled solely by edge sensors; no boundary-based triggers.
       
-  // Enemies update
-  updateEnemies(this, time, delta);
+      // --- Stamina: regen/drain tick ---
+      const dt = (delta || 16) / 1000;
+      let staminaChanged = false;
+      if (this.shieldRaised) {
+        const drain = 10 * dt;
+        const prev = this.stamina;
+        this.stamina = Math.max(0, this.stamina - drain);
+        staminaChanged = staminaChanged || (this.stamina !== prev);
+        if (this.stamina <= 0) {
+          if (this.shieldRaised) this.lowerShield();
+        }
+      } else {
+        const prev = this.stamina;
+        this.stamina = Math.min(this.maxStamina, this.stamina + this.staminaRegenPerSec * dt);
+        staminaChanged = staminaChanged || (this.stamina !== prev);
+      }
+      if (staminaChanged && Math.abs(this.stamina - this._lastStamina) >= 0.5) {
+        const ui = this.scene.get(SCENES.UI);
+        if (ui && ui.scene.isActive() && ui.updateStaminaBar) {
+          ui.updateStaminaBar(Math.round(this.stamina), this.maxStamina);
+        }
+        this._lastStamina = this.stamina;
+      }
+
+      // Enemies update
+      updateEnemies(this, time, delta);
+
+      // Mini-map upkeep
+      if (this.miniMapVisible) {
+        if (this._miniMapLastMap !== this.currentMap) {
+          this.refreshMiniMap();
+        } else {
+          this.updateMiniMapPlayerDot();
+        }
+        this.updateMiniMapEntities();
+      }
+
+      // World map: nothing per-frame except input; kept static while open
       
       // Update interaction prompt visibility if near the shopkeeper
       this.updateInteractionPrompt();
@@ -730,16 +821,341 @@ export class MainScene extends Phaser.Scene {
       const inShop = this.currentMap === MAP_IDS.SHOP_01;
       const keep = this.shopkeeper;
       if (!inShop || !keep || !keep.active) return;
-      if (this.dialogOpen || this.isScrolling) return;
+  if (this.isScrolling || UIRegistry.anyOpen()) return;
       const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, keep.x, keep.y);
       if (d > 24) return;
       if (this.interactText) this.interactText.setVisible(false);
       this.openShopDialog();
     }
 
+    openPauseMenu() {
+      if (UIRegistry.anyOpen()) {
+        const names = UIRegistry.names ? UIRegistry.names() : [];
+        if (!names.includes('pause')) return; // don't stack over other UIs
+      }
+      UIRegistry.open('pause');
+      this.isPausedOverlay = true;
+      // Build pause overlay
+      this.pauseModal = createModal(this, { coverHUD: false, depthBase: 600 });
+      this.pauseTitle = addTitle(this, this.pauseModal, 'Paused', { fontSize: '14px', color: '#ffffff' });
+      const hint = 'ESC to resume';
+      const y = this.pauseModal.content.bottom - 2;
+      this.pauseHint = this.add.text(this.pauseModal.center.x, y, hint, { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5, 1).setDepth(602);
+      // Buttons: Save, Load, Quit (Quit = just close overlay for now)
+      const cx = this.pauseModal.center.x;
+      const bx = cx; let by = this.pauseModal.content.top + 28;
+      const makeButton = (label, onClick) => {
+        const w = 70, h = 14;
+        const r = this.add.rectangle(bx, by, w, h, 0x333333, 0.9).setStrokeStyle(1, 0xffffff).setDepth(602).setInteractive({ useHandCursor: true });
+        const t = this.add.text(bx, by, label, { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5).setDepth(603);
+        r.on('pointerdown', () => { onClick(); });
+        by += h + 6;
+        return [r, t];
+      };
+      const nodes = [];
+      nodes.push(...makeButton('Save', () => this.saveGame()));
+      nodes.push(...makeButton('Load', () => this.loadGame()));
+      nodes.push(...makeButton('Resume', () => this.closePauseMenu()));
+      this.pauseButtons = nodes;
+      // Pause physics and tweens
+      try { this.physics.world.pause(); } catch {}
+      try { this.tweens.pauseAll(); } catch {}
+    }
+
+    closePauseMenu() {
+      this.isPausedOverlay = false;
+      UIRegistry.close('pause');
+      // Destroy nodes
+  [this.pauseHint, this.pauseTitle].forEach(n => { try { n?.destroy(); } catch {} });
+  if (this.pauseButtons) { this.pauseButtons.forEach(n => { try { n?.destroy(); } catch {} }); this.pauseButtons = null; }
+      try { this.pauseModal?.destroy(); } catch {}
+      this.pauseHint = this.pauseTitle = this.pauseModal = null;
+      // Resume physics and tweens
+      try { this.physics.world.resume(); } catch {}
+      try { this.tweens.resumeAll(); } catch {}
+    }
+
+    // --- World Map (visited tiles only) ---
+    toggleWorldMap() { if (this.worldMapVisible) this.closeWorldMap(); else this.openWorldMap(); }
+    openWorldMap() {
+      if (this.worldMapVisible) return;
+      this.worldMapVisible = true;
+      UIRegistry.open('worldmap');
+      // Ensure current map counted as visited
+      try { this.visitedMaps.add(this.currentMap); } catch {}
+      this.buildWorldMapContainer();
+    }
+    closeWorldMap() {
+      this.worldMapVisible = false;
+      UIRegistry.close('worldmap');
+      if (this.worldMapContainer) { try { this.worldMapContainer.destroy(); } catch {} this.worldMapContainer = null; }
+    }
+    buildWorldMapContainer() {
+      if (this.worldMapContainer) { try { this.worldMapContainer.destroy(); } catch {} }
+      const modal = createModal(this, { coverHUD: true, depthBase: 620, outerMargin: 10, padTop: 20, padBottom: 18 });
+      const title = addTitle(this, modal, 'World Map', { fontSize: '14px', color: '#ffffff' });
+      const hint = this.add.text(modal.center.x, modal.content.bottom, 'O to close', { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5, 1).setDepth(623);
+      // Compute grid bounds
+      const layouts = Object.entries(this.worldMapLayout);
+      const minGX = Math.min(...layouts.map(([, v]) => v.gx));
+      const maxGX = Math.max(...layouts.map(([, v]) => v.gx));
+      const minGY = Math.min(...layouts.map(([, v]) => v.gy));
+      const maxGY = Math.max(...layouts.map(([, v]) => v.gy));
+      const cols = (maxGX - minGX + 1) || 1;
+      const rows = (maxGY - minGY + 1) || 1;
+      // Tile size fit into modal content
+      const availW = modal.content.width();
+      const availH = modal.content.height();
+      const gap = 4;
+      const tileW = Math.floor((availW - gap * (cols - 1)) / cols);
+      const tileH = Math.floor((availH - gap * (rows - 1)) / rows);
+      const tileSize = Math.max(16, Math.min(tileW, tileH));
+      const gridW = cols * tileSize + (cols - 1) * gap;
+      const gridH = rows * tileSize + (rows - 1) * gap;
+      const startX = modal.center.x - gridW / 2;
+      const startY = modal.center.y - gridH / 2 + 6; // slight bias down from title
+      // Draw tiles
+      const cont = this.add.container(0, 0).setDepth(622);
+      cont.setScrollFactor(0);
+      layouts.forEach(([mapId, pos]) => {
+        const gx = pos.gx - minGX; const gy = pos.gy - minGY;
+        const x = startX + gx * (tileSize + gap) + tileSize / 2;
+        const y = startY + gy * (tileSize + gap) + tileSize / 2;
+        const visited = this.visitedMaps.has(Number(mapId)) || this.visitedMaps.has(mapId);
+        const isCurrent = (mapId == this.currentMap);
+        const color = (this.maps[mapId]?.type === 'shop') ? 0x5a3b2e : 0x228be6;
+        const fillAlpha = visited ? 0.95 : 0.08;
+        const stroke = visited ? 0xffffff : 0x777777;
+        const r = this.add.rectangle(x, y, tileSize, tileSize, color, fillAlpha).setStrokeStyle(isCurrent ? 2 : 1, isCurrent ? 0xffff00 : stroke).setDepth(622).setScrollFactor(0);
+        cont.add(r);
+        if (visited) {
+          // Label (small)
+          const label = this.add.text(x, y, this.maps[mapId]?.type === 'shop' ? 'Shop' : 'Overworld', { fontSize: '8px', color: '#ffffff' }).setOrigin(0.5).setDepth(623).setScrollFactor(0);
+          cont.add(label);
+        }
+      });
+      this.worldMapContainer = this.add.container(0, 0, [modal.backdrop, modal.panel, title, hint, cont]).setDepth(620);
+      this.worldMapContainer.setScrollFactor(0);
+      // Keep references so close can destroy
+      this.worldMapContainer.modal = modal;
+    }
+
+    // --- Save / Load ---
+    saveGame() {
+      try {
+        const data = {
+          v: 1,
+          map: this.currentMap,
+          visited: Array.from(this.visitedMaps || []),
+          player: { x: Math.round(this.player.x), y: Math.round(this.player.y), hp: this.health, maxHp: this.maxHealth },
+          stamina: { s: Math.round(this.stamina), m: this.maxStamina },
+          wallet: this.wallet || { total: 0, counts: { copper: 0, silver: 0 } },
+          inventory: (this.inventoryItems || []).map(it => ({ type: it.type, subtype: it.subtype, name: it.name, color: it.color, size: it.size })),
+          equipped: {
+            weaponIdx: this.equippedWeapon ? this.inventoryItems.indexOf(this.equippedWeapon) : -1,
+            shieldIdx: this.equippedShield ? this.inventoryItems.indexOf(this.equippedShield) : -1
+          }
+        };
+        localStorage.setItem('gold.save.v1', JSON.stringify(data));
+        console.log('Game saved.');
+      } catch (e) {
+        console.warn('Save failed', e);
+      }
+    }
+
+    loadGame() {
+      try {
+        const raw = localStorage.getItem('gold.save.v1');
+        if (!raw) { console.log('No save found'); return; }
+        const data = JSON.parse(raw);
+        if (!data || data.v !== 1) { console.log('Unknown save version'); return; }
+        // Map + player pos
+        this.currentMap = data.map ?? this.currentMap;
+        // Restore visited tiles if present
+        if (Array.isArray(data.visited)) {
+          this.visitedMaps = new Set(data.visited);
+        }
+        // Recreate world objects for the map
+        this.createMapObjects();
+        // Position player
+        if (this.player) { this.player.x = data.player?.x ?? this.player.x; this.player.y = data.player?.y ?? this.player.y; }
+        // HP/Stamina
+        this.health = data.player?.hp ?? this.health; this.maxHealth = data.player?.maxHp ?? this.maxHealth;
+        this.stamina = data.stamina?.s ?? this.stamina; this.maxStamina = data.stamina?.m ?? this.maxStamina;
+        // Camera bg color based on restored map
+        if (this.maps && this.maps[this.currentMap]) {
+          this.cameras.main.setBackgroundColor(this.maps[this.currentMap].color);
+        }
+        // Wallet
+        this.wallet = data.wallet || this.wallet;
+        // Inventory reconstruction
+        this.inventoryItems = (data.inventory || []).map(it => ({ ...it }));
+        // Equip
+        if (data.equipped) {
+          if (data.equipped.weaponIdx >= 0) this.equippedWeapon = this.inventoryItems[data.equipped.weaponIdx];
+          if (data.equipped.shieldIdx >= 0) this.equippedShield = this.inventoryItems[data.equipped.shieldIdx];
+          this.hasMeleeWeapon = !!this.equippedWeapon; this.hasShield = !!this.equippedShield;
+        }
+        // HUD refresh
+        const ui = this.scene.get(SCENES.UI);
+        if (ui?.scene.isActive()) {
+          ui.updateHealthBar(this.health, this.maxHealth);
+          const w = this.wallet || { total: 0, counts: { copper: 0, silver: 0 } };
+          ui.updateCurrency(w.total || 0, w.counts.copper || 0, w.counts.silver || 0);
+          ui.updateStaminaBar?.(this.stamina, this.maxStamina);
+          this.updateEquipmentHUD();
+        }
+        console.log('Game loaded.');
+      } catch (e) {
+        console.warn('Load failed', e);
+      }
+    }
+
+    // --- Mini-map overlay helpers ---
+    toggleMiniMap() {
+      if (this.miniMapVisible) this.closeMiniMap();
+      else this.openMiniMap();
+    }
+
+    openMiniMap() {
+      if (this.miniMapVisible) return;
+      this.miniMapVisible = true;
+      this.buildMiniMapContainer();
+      this.refreshMiniMap();
+    }
+
+    closeMiniMap() {
+      this.miniMapVisible = false;
+      if (this.miniMapContainer) {
+        try { this.miniMapContainer.destroy(); } catch {}
+        this.miniMapContainer = null;
+      }
+    }
+
+    buildMiniMapContainer() {
+      if (this.miniMapContainer) { try { this.miniMapContainer.destroy(); } catch {} }
+      const maxW = this.miniMapCfg.width;
+      const margin = this.miniMapCfg.margin;
+      const maxH = Math.max(8, (this.hudHeight - margin * 2));
+      const scaleByW = maxW / this.worldPixelWidth;
+      const scaleByH = maxH / this.worldPixelHeight;
+      const scale = Math.min(scaleByW, scaleByH);
+      const width = Math.round(this.worldPixelWidth * scale);
+      const height = Math.round(this.worldPixelHeight * scale);
+      const x0 = this.worldPixelWidth - margin - width;
+      const y0 = 8; // within HUD band
+      const cont = this.add.container(0, 0).setDepth(700);
+      cont.setScrollFactor(0);
+      // Background panel
+      const bg = this.add.rectangle(x0 + width / 2, y0 + height / 2, width, height, 0x000000, 0.45)
+        .setStrokeStyle(1, 0xffffff)
+        .setScrollFactor(0)
+        .setDepth(700);
+      cont.mmMeta = { x0, y0, width, height, scale };
+      cont.add(bg);
+      // Player dot
+      const pd = this.add.circle(0, 0, 2, 0xffff00).setScrollFactor(0).setDepth(702);
+      cont.mmPlayerDot = pd;
+      cont.add(pd);
+  // Buckets
+  cont.mmDoors = this.add.container(0, 0).setDepth(701);
+  cont.mmDoors.setScrollFactor?.(0);
+  cont.add(cont.mmDoors);
+  cont.mmEnemies = this.add.container(0, 0).setDepth(701);
+  cont.mmEnemies.setScrollFactor?.(0);
+  cont.add(cont.mmEnemies);
+  cont.mmNPCs = this.add.container(0, 0).setDepth(701);
+  cont.mmNPCs.setScrollFactor?.(0);
+  cont.add(cont.mmNPCs);
+      this.miniMapContainer = cont;
+    }
+
+    refreshMiniMap() {
+      if (!this.miniMapContainer) this.buildMiniMapContainer();
+      const cont = this.miniMapContainer;
+      const { x0, y0, width, height, scale } = cont.mmMeta;
+      // Clear door markers
+      if (cont.mmDoors) cont.mmDoors.removeAll(true);
+      // Add door markers snapped to walls for edge doors
+      const doors = this.doorRegistry[this.currentMap] || {};
+      Object.keys(doors).forEach((id) => {
+        const d = doors[id];
+        let wx = d.gridX * this.gridCellSize + this.gridCellSize / 2;
+        let wy = d.gridY * this.gridCellSize + this.gridCellSize / 2;
+        let mx = x0 + Math.round(wx * scale);
+        let my = y0 + Math.round(wy * scale);
+        const pad = 2;
+        if (d.type === 'edge_west') mx = x0 + pad;
+        else if (d.type === 'edge_east') mx = x0 + width - pad;
+        if (d.type === 'edge_north') my = y0 + pad;
+        else if (d.type === 'edge_south') my = y0 + height - pad;
+        const marker = this.add.rectangle(mx, my, 3, 3, 0x00ccff).setScrollFactor(0);
+        cont.mmDoors.add(marker);
+      });
+      this._miniMapLastMap = this.currentMap;
+      this.updateMiniMapPlayerDot();
+    }
+
+    updateMiniMapPlayerDot() {
+      if (!this.miniMapContainer || !this.player) return;
+      const cont = this.miniMapContainer;
+      const { x0, y0, scale } = cont.mmMeta;
+      const mx = x0 + Math.round(this.player.x * scale);
+      const my = y0 + Math.round(this.player.y * scale);
+      cont.mmPlayerDot.setPosition(mx, my);
+    }
+
+    updateMiniMapEntities() {
+      if (!this.miniMapContainer) return;
+      const cont = this.miniMapContainer;
+      const { x0, y0, scale } = cont.mmMeta;
+      // Enemies
+      const enemies = this.enemiesGroup ? this.enemiesGroup.getChildren() : [];
+      cont.mmEnemyDots = cont.mmEnemyDots || [];
+      // Ensure enough enemy dots
+      for (let i = cont.mmEnemyDots.length; i < enemies.length; i++) {
+        const dot = this.add.circle(0, 0, 2, 0xff4444).setScrollFactor(0).setDepth(701);
+        cont.mmEnemies.add(dot);
+        cont.mmEnemyDots.push(dot);
+      }
+      // Position and visibility
+      for (let i = 0; i < cont.mmEnemyDots.length; i++) {
+        const dot = cont.mmEnemyDots[i];
+        if (i < enemies.length && enemies[i].active) {
+          const e = enemies[i];
+          const mx = x0 + Math.round(e.x * scale);
+          const my = y0 + Math.round(e.y * scale);
+          dot.setPosition(mx, my).setVisible(true);
+        } else {
+          dot.setVisible(false);
+        }
+      }
+      // NPCs
+      const npcs = [];
+      if (this.shopkeeper && this.shopkeeper.active) npcs.push(this.shopkeeper);
+      cont.mmNPCDots = cont.mmNPCDots || [];
+      for (let i = cont.mmNPCDots.length; i < npcs.length; i++) {
+        const dot = this.add.rectangle(0, 0, 3, 3, 0x66ccff).setScrollFactor(0).setDepth(701);
+        cont.mmNPCs.add(dot);
+        cont.mmNPCDots.push(dot);
+      }
+      for (let i = 0; i < cont.mmNPCDots.length; i++) {
+        const dot = cont.mmNPCDots[i];
+        if (i < npcs.length) {
+          const n = npcs[i];
+          const mx = x0 + Math.round(n.x * scale);
+          const my = y0 + Math.round(n.y * scale);
+          dot.setPosition(mx, my).setVisible(true);
+        } else {
+          dot.setVisible(false);
+        }
+      }
+    }
+
     openShopDialog() {
       if (this.dialogOpen) return;
       this.dialogOpen = true;
+      UIRegistry.open('shop');
       // Gather available items in the shop
       const items = [];
       const tryPush = (obj) => { if (obj && obj.isShopItem && obj.active) items.push(obj); };
@@ -752,34 +1168,22 @@ export class MainScene extends Phaser.Scene {
         if (s > 0) return `${s}s`;
         return `${c}c`;
       };
-  // Build a full-screen (gameplay area) dialog with padding
-  const gameW = this.worldPixelWidth;
-  const gameH = this.worldPixelHeight; // gameplay area height
-  const cx = gameW / 2;
-  const cy = gameH / 2; // center within gameplay coordinates (camera viewport already accounts for HUD)
-      // Backdrop only covers gameplay area (not the HUD)
-  this.dialogBackdrop = this.add.rectangle(cx, cy, gameW, gameH, 0x000000, 0.55).setDepth(500);
-      // Panel with outer margin, then inner padding for content
-      const outerMargin = 12;
-      const panelW = gameW - (outerMargin * 2);
-      const panelH = gameH - (outerMargin * 2);
-      this.dialogPanel = this.add.rectangle(cx, cy, panelW, panelH, 0x222222, 0.95).setStrokeStyle(2, 0xffffff).setDepth(501);
-      const padX = 14; // inner padding from left/right
-      const padTop = 12; // inner padding from top
-      const padBottom = 12; // inner padding from bottom
-      const leftX = cx - (panelW / 2) + padX;
-      const rightX = cx + (panelW / 2) - padX;
-      const topY = cy - (panelH / 2) + padTop;
-      const bottomY = cy + (panelH / 2) - padBottom;
-      // Title, centered at top within padding
-      this.dialogText = this.add.text(cx, topY, 'Welcome! What would you like to buy?', { fontSize: '12px', color: '#ffffff', wordWrap: { width: panelW - padX * 2 } }).setOrigin(0.5, 0).setDepth(502);
+  // Use unified UI modal
+  const modal = createModal(this, { coverHUD: false, depthBase: 500 });
+    const leftX = modal.content.left;
+    const rightX = modal.content.right;
+    const topY = modal.content.top;
+    const bottomY = modal.content.bottom;
+    this.dialogBackdrop = modal.backdrop;
+    this.dialogPanel = modal.panel;
+    this.dialogText = addTitle(this, modal, 'Welcome! What would you like to buy?');
       // Show current wallet in both denominations and total pence
       const silver = (this.wallet?.counts?.silver || 0);
       const copper = (this.wallet?.counts?.copper || 0);
       const totalP = getWalletTotal(this);
       const walletY = topY + 18;
       this.dialogWalletText = this.add.text(
-        cx,
+        modal.center.x,
         walletY,
         `Wallet: ${silver}s ${copper}c (${fmtPrice(totalP)} / ${totalP}p)`,
         { fontSize: '10px', color: '#aaddff' }
@@ -795,8 +1199,8 @@ export class MainScene extends Phaser.Scene {
       const walletTotalNow = totalP;
 
       // Page indicator
-      const pageY = bottomY - 2;
-      this.dialogPageText = this.add.text(rightX, pageY, '', { fontSize: '9px', color: '#dddddd' }).setOrigin(1, 1).setDepth(502);
+  const pageY = bottomY - 2;
+  this.dialogPageText = this.add.text(rightX, pageY, '', { fontSize: '9px', color: '#dddddd' }).setOrigin(1, 1).setDepth(502);
 
       // Render function
       const renderList = () => {
@@ -821,8 +1225,8 @@ export class MainScene extends Phaser.Scene {
         // Hint updates
         const hasPages = pageCount > 1;
         const hintText = hasPages ? '1-6 to buy, ESC to cancel, A/D or ◀/▶ to change page' : 'Press 1-6 to buy, or ESC to cancel';
-        if (this.dialogHint) { try { this.dialogHint.destroy(); } catch {} }
-        this.dialogHint = this.add.text(cx, bottomY, hintText, { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5, 1).setDepth(502);
+  if (this.dialogHint) { try { this.dialogHint.destroy(); } catch {} }
+  this.dialogHint = this.add.text(modal.center.x, bottomY, hintText, { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5, 1).setDepth(502);
         // Page indicator text
         this.dialogPageText.setText(hasPages ? `Page ${this.dialogPageIndex+1}/${pageCount}` : '');
       };
@@ -908,7 +1312,7 @@ export class MainScene extends Phaser.Scene {
 
     closeShopDialog() {
       this.dialogOpen = false;
-      [this.dialogBackdrop, this.dialogPanel, this.dialogText, this.dialogHint, this.dialogWalletText, this.dialogPageText].forEach(el => { try { el?.destroy(); } catch {} });
+  [this.dialogBackdrop, this.dialogPanel, this.dialogText, this.dialogHint, this.dialogWalletText, this.dialogPageText].forEach(el => { try { el?.destroy(); } catch {} });
       if (this.dialogListTexts) { this.dialogListTexts.forEach(t => { try { t.destroy(); } catch {} }); }
       this.dialogBackdrop = this.dialogPanel = this.dialogText = this.dialogHint = this.dialogWalletText = this.dialogPageText = null;
       this.dialogListTexts = null;

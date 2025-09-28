@@ -90,7 +90,7 @@ export class CurrencySystem {
         });
     }
 
-    // Environmental interaction - call this when player interacts with bushes, etc.
+    // Environmental interaction placeholder
     rollForDrop() {
         const roll = Math.random();
         if (roll < 0.05) { // 5% chance for silver (very rare)

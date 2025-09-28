@@ -30,3 +30,8 @@ Validate locally:
 - `npm run validate:ai`
 
 More details in `CONTRIBUTING.md`.
+
+## Project Docs
+
+- Development Phases: `docs/development-phases.md`
+- Engineering Guidelines: `.github/copilot-instructions.md` (Development Guidelines section)

@@ -4,6 +4,7 @@
  - See: docs/ai/index.json
 */
 import { SCENES } from './constants';
+import { createModal, addTitle, UI } from './ui';
 
 export function addToInventory(scene, item) {
   if (scene.inventoryItems.length >= scene.maxInventorySize) return false;
@@ -67,35 +68,42 @@ export function toggleInventory(scene) {
 
 export function showInventory(scene) {
   if (!scene.inventoryPanel) {
-    scene.inventoryPanel = scene.add.rectangle(160, 120, 300, 180, 0x333333, 0.8);
-    scene.inventoryPanel.setDepth(10);
-    scene.inventoryTitle = scene.add.text(160, 50, 'INVENTORY', { fontSize: '16px', fill: '#ffffff', align: 'center' });
-    scene.inventoryTitle.setOrigin(0.5);
-    scene.inventoryTitle.setDepth(11);
+    const modal = createModal(scene, { coverHUD: false, depthBase: 400 });
+    scene.inventoryBackdrop = modal.backdrop;
+    scene.inventoryPanel = modal.panel;
+    scene.inventoryTitle = addTitle(scene, modal, 'INVENTORY', { fontSize: '16px', color: '#ffffff' });
     scene.inventorySlots = [];
     scene.inventorySlotTexts = [];
+    const cols = 4;
+    const slotSize = { w: 35, h: 35 };
+    const gutter = 8;
+    const startX = modal.content.left + 10;
+    const startY = modal.content.top + 28;
     for (let i = 0; i < scene.maxInventorySize; i++) {
-      const row = Math.floor(i / 4);
-      const col = i % 4;
-      const x = 80 + (col * 40);
-      const y = 100 + (row * 45);
-      const slot = scene.add.rectangle(x, y, 35, 35, 0x666666);
-      slot.setDepth(11);
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      const x = startX + col * (slotSize.w + gutter);
+      const y = startY + row * (slotSize.h + gutter + 10);
+      const slot = scene.add.rectangle(x, y, slotSize.w, slotSize.h, 0x666666);
+      slot.setDepth(411);
       scene.inventorySlots.push(slot);
-      const slotNumber = scene.add.text(x - 15, y - 15, `${i + 1}`, { fontSize: '12px', fill: '#ffffff' });
-      slotNumber.setDepth(12);
+      const slotNumber = scene.add.text(x - slotSize.w/2 + 2, y - slotSize.h/2 + 2, `${i + 1}`, { fontSize: '10px', fill: '#ffffff' });
+      slotNumber.setDepth(412);
       scene.inventorySlotTexts.push(slotNumber);
     }
   }
   updateInventoryDisplay(scene);
+  if (scene.inventoryBackdrop) scene.inventoryBackdrop.setVisible(true);
   scene.inventoryPanel.setVisible(true);
   scene.inventoryTitle.setVisible(true);
   scene.inventorySlots.forEach(slot => slot.setVisible(true));
   scene.inventorySlotTexts.forEach(text => text.setVisible(true));
+  UI.open('inventory');
 }
 
 export function hideInventory(scene) {
   if (!scene.inventoryPanel) return;
+  if (scene.inventoryBackdrop) scene.inventoryBackdrop.setVisible(false);
   scene.inventoryPanel.setVisible(false);
   scene.inventoryTitle.setVisible(false);
   scene.inventorySlots.forEach(slot => slot.setVisible(false));
@@ -106,6 +114,7 @@ export function hideInventory(scene) {
   if (scene.equipmentDisplays) {
     scene.equipmentDisplays.forEach(display => { if (display.sprite) display.sprite.setVisible(false); if (display.text) display.text.setVisible(false); });
   }
+  UI.close('inventory');
 }
 
 export function updateInventoryDisplay(scene) {
