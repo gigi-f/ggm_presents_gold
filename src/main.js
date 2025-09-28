@@ -613,7 +613,14 @@ export class MainScene extends Phaser.Scene {
   if (names.includes('inventory')) { this.hideInventory(); this.inventoryOpen = false; return; }
         if (names.includes('worldmap')) { this.closeWorldMap?.(); return; }
         // If some other UI is open that's not pause, ignore here
-        if (names.length > 0 && !names.includes('pause')) return;
+        if (names.length > 0 && !names.includes('pause')) {
+          // Try generic top-of-stack close if available
+          const top = UIRegistry.top ? UIRegistry.top() : null;
+          if (top === 'shop') { this.closeShopDialog(); return; }
+          if (top === 'inventory') { this.hideInventory(); this.inventoryOpen = false; return; }
+          if (top === 'worldmap') { this.closeWorldMap?.(); return; }
+          return;
+        }
         // Toggle pause
         if (names.includes('pause')) this.closePauseMenu();
         else this.openPauseMenu();
