@@ -183,7 +183,7 @@ Recent changes (delta):
   - Code documentation
   - [ ] API reference
   - [ ] Game design document
-  - [ ] User manual
+  - [x] User manual (GAMEPLAY_MANUAL.md)
   - [ ] Troubleshooting guide
 
 - [ ] Launch Preparation
