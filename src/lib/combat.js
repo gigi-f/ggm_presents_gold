@@ -5,6 +5,8 @@
 */
 import Phaser from 'phaser';
 import { damageEnemy } from './enemies';
+import { playPlayerAction } from './audio.js';
+import { createWeaponTrail } from './particles.js';
 export function swingMeleeWeapon(scene) {
   if (!scene.hasMeleeWeapon) { console.log('Cannot swing melee weapon - no weapon equipped!'); return; }
   if (scene.meleeWeaponSwinging) { console.log('Cannot swing melee weapon - already swinging!'); return; }
@@ -19,6 +21,9 @@ export function swingMeleeWeapon(scene) {
   }
   scene.meleeWeaponSwinging = true;
   console.log(`Swinging ${scene.meleeWeaponName} in direction:`, scene.lastDirection);
+  
+  // Play swing sound effect
+  playPlayerAction(scene, 'swing');
 
   let weaponColor = 0xc0c0c0;
   let weaponSize = { width: 20, height: 4 };
@@ -47,6 +52,9 @@ export function swingMeleeWeapon(scene) {
   scene.meleeWeaponSprite.setVisible(true);
   scene.meleeWeaponSprite.x = scene.player.x;
   scene.meleeWeaponSprite.y = scene.player.y;
+  
+  // Create weapon trail effect
+  createWeaponTrail(scene, scene.player.x, scene.player.y);
 
   let startAngle = -45, endAngle = 45;
   if (scene.lastDirection === 'left') { startAngle = -135; endAngle = -225; }
@@ -123,6 +131,9 @@ export function raiseShield(scene) {
   if (!scene.hasShield) { console.log('Cannot raise shield - no shield equipped!'); return; }
   if (scene.meleeWeaponSwinging) { console.log('Cannot raise shield - currently swinging melee weapon!'); return; }
   scene.shieldRaised = true;
+  
+  // Play shield raise sound
+  playPlayerAction(scene, 'shield');
   let shieldColor = 0x654321; let shieldSize = { width: 12, height: 16 };
   if (scene.equippedShield) { shieldColor = scene.equippedShield.color; shieldSize = scene.equippedShield.size; }
   else {

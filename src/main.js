@@ -13,6 +13,9 @@ import { initWallet, addToWallet, spendFromWallet, getItemPrice, getWalletTotal 
 import { ensureProspectorTexture } from './lib/playerSprite.js';
 import { updateEnemies } from './lib/enemies.js';
 import { createModal, addTitle, UI as UIRegistry } from './lib/ui.js';
+import { AudioManager, playMusic, playSFX, playPlayerAction, playEnemyAction, playPickupSound, playUISound, MUSIC_KEYS, SFX_KEYS } from './lib/audio.js';
+import { createCharacterAnimator, updateCharacterAnimation, playPlayerHitAnimation, ANIMATION_STATES } from './lib/animations.js';
+import { ParticleSystem, createHitEffect, createWeaponTrail, createCurrencySparkle, createDeathEffect, createEnvironmentalDust } from './lib/particles.js';
 
 export class MainScene extends Phaser.Scene {
   constructor() {
@@ -33,6 +36,8 @@ export class MainScene extends Phaser.Scene {
 
     // Player/inventory default state
     this.player = null;
+    this.characterAnimator = null;
+    this.particleSystem = null;
     this.shieldRaised = false;
     this.shieldKey = null;
     this.shieldSprite = null;
@@ -195,6 +200,7 @@ export class MainScene extends Phaser.Scene {
       const targetInfo = this.maps[this.currentMap].doors[doorId];
       if (targetInfo) {
         console.log(`Entering building via door ${doorId}`);
+        playUISound(this, 'select'); // Door enter sound
         const targetDoorData = this.doorRegistry[targetInfo.targetMap][targetInfo.targetDoor];
         this.transitionToMapWithLock(targetInfo.targetMap, 
           targetDoorData.gridX * 16 + 8, 
@@ -209,6 +215,7 @@ export class MainScene extends Phaser.Scene {
       const targetInfo = this.maps[this.currentMap].doors[doorId];
       if (targetInfo) {
         console.log(`Exiting building via door ${doorId}`);
+        playUISound(this, 'back'); // Door exit sound
         const targetDoorData = this.doorRegistry[targetInfo.targetMap][targetInfo.targetDoor];
         this.transitionToMapWithLock(targetInfo.targetMap, 
           targetDoorData.gridX * 16 + 8, 
@@ -297,6 +304,11 @@ export class MainScene extends Phaser.Scene {
       // Update the UI Scene's health bar
   this.scene.get(SCENES.UI).updateHealthBar(this.health, this.maxHealth);
       
+      // Play hit animation
+      if (this.characterAnimator) {
+        playPlayerHitAnimation(this.characterAnimator);
+      }
+      
       // Flash the player red when taking damage
       // Sprites: use tint; Shapes: use fill color
       if (typeof this.player.setTint === 'function') {
@@ -332,6 +344,9 @@ export class MainScene extends Phaser.Scene {
       };
       
       if (this.addToInventory(weaponItem)) {
+        // Play pickup sound
+        playPickupSound(this, meleeWeapon.x, meleeWeapon.y, 'item');
+        
         // Mark item as collected based on which weapon it is
         if (meleeWeapon === this.meleeWeapon1) {
           this.collectedItems.meleeWeapon1 = true;
@@ -364,6 +379,9 @@ export class MainScene extends Phaser.Scene {
       };
       
       if (this.addToInventory(shieldItem)) {
+        // Play pickup sound
+        playPickupSound(this, shield.x, shield.y, 'item');
+        
         // Mark item as collected based on which shield it is
         if (shield === this.shield1) {
           this.collectedItems.shield1 = true;
@@ -388,6 +406,13 @@ export class MainScene extends Phaser.Scene {
 
     pickupCurrency(player, currencyItem) {
       const type = currencyItem.currencyType || 'copper';
+      
+      // Play pickup sound  
+      playPickupSound(this, currencyItem.x, currencyItem.y, 'currency');
+      
+      // Create sparkle effect
+      createCurrencySparkle(this, currencyItem.x, currencyItem.y);
+      
       // Add one unit to the wallet and update HUD via helper
       addToWallet(this, type, 1);
       // Track collected currency by id to prevent respawn
@@ -475,11 +500,19 @@ export class MainScene extends Phaser.Scene {
       }
     }
   
-    preload() {}
+    preload() {
+    // Initialize audio assets
+    AudioManager.preloadAudio(this);
+  }
   
   create() {
       // Initialize wallet/currency tracking early
       initWallet(this);
+      
+      // Initialize audio manager
+      this.audioManager = new AudioManager(this);
+      this.audioManager.createAudio();
+      
       // Ensure keyboard input is enabled (in case a prior transition left it disabled)
       if (this.input && this.input.keyboard) {
         this.input.keyboard.enabled = true;
@@ -678,6 +711,12 @@ export class MainScene extends Phaser.Scene {
         this.player.body.setOffset(4, 6);
       }
 
+      // Initialize character animator
+      this.characterAnimator = createCharacterAnimator(this, this.player);
+
+      // Initialize particle system
+      this.particleSystem = new ParticleSystem(this);
+
       // Initialize grid system for object placement
       this.initializeGrid();
 
@@ -685,6 +724,9 @@ export class MainScene extends Phaser.Scene {
       this.createMapObjects();
       // Mark initial map as visited for world map fog-of-war
       try { this.visitedMaps.add(this.currentMap); } catch {}
+
+      // Start initial background music based on current map  
+      this.updateMusicForMap(this.currentMap);
 
       // Pre-warm the physics/renderer by doing a quick step
       this.time.delayedCall(16, () => {
@@ -705,6 +747,31 @@ export class MainScene extends Phaser.Scene {
       this.player.y = playerY;
       this.cameras.main.setBackgroundColor(this.maps[this.currentMap].color);
       this.createMapObjects(); // Recreate boundary rocks and map objects
+      
+      // Update music based on map context
+      this.updateMusicForMap(newMapIndex);
+    }
+
+    // Determine and play appropriate music for current map
+    updateMusicForMap(mapId) {
+      if (!this.audioManager) return;
+      
+      // Get map type and determine music
+      const mapData = this.maps[mapId];
+      if (!mapData) return;
+      
+      let targetMusic = MUSIC_KEYS.OVERWORLD; // Default
+      
+      if (mapData.type === 'shop') {
+        targetMusic = MUSIC_KEYS.SHOP;
+      } else if (mapData.type === 'cave') {
+        targetMusic = MUSIC_KEYS.CAVE; 
+      } else if (mapData.type === 'overworld') {
+        targetMusic = MUSIC_KEYS.OVERWORLD;
+      }
+      
+      // Play music with smooth transition
+      playMusic(this, targetMusic);
     }
 
   update(time, delta) {
@@ -805,6 +872,23 @@ export class MainScene extends Phaser.Scene {
         this._lastStamina = this.stamina;
       }
 
+      // Update character animations based on player state
+      if (this.characterAnimator && this.player.body) {
+        const velocity = { x: this.player.body.velocity.x, y: this.player.body.velocity.y };
+        const isAttacking = this.meleeWeaponSwinging || false;
+        updateCharacterAnimation(this.characterAnimator, velocity, isAttacking, this.lastDirection);
+      }
+
+      // Update particle system
+      if (this.particleSystem) {
+        this.particleSystem.update(time, delta);
+      }
+
+      // Periodic environmental effects
+      if (Math.random() < 0.002) { // Small chance each frame for atmosphere
+        createEnvironmentalDust(this);
+      }
+
       // Enemies update
       updateEnemies(this, time, delta);
 
@@ -896,6 +980,7 @@ export class MainScene extends Phaser.Scene {
       const nodes = [];
       nodes.push(...makeButton('Save', () => this.saveGame()));
       nodes.push(...makeButton('Load', () => this.loadGame()));
+      nodes.push(...makeButton('Audio Settings', () => this.openAudioSettings()));
       nodes.push(...makeButton('Resume', () => this.closePauseMenu()));
       this.pauseButtons = nodes;
       // Pause physics and tweens
@@ -1069,6 +1154,127 @@ export class MainScene extends Phaser.Scene {
       } catch (e) {
         console.warn('Load failed', e);
       }
+    }
+
+    // --- Audio Settings ---
+    openAudioSettings() {
+      this.closePauseMenu(); // Close pause menu first
+      if (!this.audioManager) return;
+      
+      const modal = createModal(this, { coverHUD: false, depthBase: 700 });
+      const title = addTitle(this, modal, 'Audio Settings', { fontSize: '14px', color: '#ffffff' });
+      
+      // Create volume sliders/buttons
+      const cx = modal.center.x;
+      let cy = modal.content.top + 40;
+      const stepY = 22;
+      
+      // Master Volume Control
+      const masterLabel = this.add.text(cx, cy, `Master Volume: ${Math.round(this.audioManager.volumes.masterVolume * 100)}%`, 
+        { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5).setDepth(702);
+      cy += stepY;
+      
+      const masterDown = this.add.text(cx - 40, cy, '-', { fontSize: '12px', color: '#ffffff' }).setOrigin(0.5).setDepth(702).setInteractive({ useHandCursor: true });
+      const masterUp = this.add.text(cx + 40, cy, '+', { fontSize: '12px', color: '#ffffff' }).setOrigin(0.5).setDepth(702).setInteractive({ useHandCursor: true });
+      cy += stepY;
+      
+      // Music Volume Control  
+      const musicLabel = this.add.text(cx, cy, `Music Volume: ${Math.round(this.audioManager.volumes.musicVolume * 100)}%`,
+        { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5).setDepth(702);
+      cy += stepY;
+      
+      const musicDown = this.add.text(cx - 40, cy, '-', { fontSize: '12px', color: '#ffffff' }).setOrigin(0.5).setDepth(702).setInteractive({ useHandCursor: true });
+      const musicUp = this.add.text(cx + 40, cy, '+', { fontSize: '12px', color: '#ffffff' }).setOrigin(0.5).setDepth(702).setInteractive({ useHandCursor: true });
+      cy += stepY;
+      
+      // SFX Volume Control
+      const sfxLabel = this.add.text(cx, cy, `SFX Volume: ${Math.round(this.audioManager.volumes.sfxVolume * 100)}%`,
+        { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5).setDepth(702);  
+      cy += stepY;
+      
+      const sfxDown = this.add.text(cx - 40, cy, '-', { fontSize: '12px', color: '#ffffff' }).setOrigin(0.5).setDepth(702).setInteractive({ useHandCursor: true });
+      const sfxUp = this.add.text(cx + 40, cy, '+', { fontSize: '12px', color: '#ffffff' }).setOrigin(0.5).setDepth(702).setInteractive({ useHandCursor: true });
+      cy += stepY + 10;
+      
+      // Audio toggle button
+      const toggleText = this.audioManager.isEnabled ? 'Disable Audio' : 'Enable Audio';
+      const toggleButton = this.add.text(cx, cy, toggleText, { fontSize: '10px', color: this.audioManager.isEnabled ? '#ff6666' : '#66ff66' })
+        .setOrigin(0.5).setDepth(702).setInteractive({ useHandCursor: true });
+      cy += stepY + 10;
+      
+      // Close button
+      const closeButton = this.add.text(cx, cy, 'Close', { fontSize: '10px', color: '#ffffff', backgroundColor: '#333333' })
+        .setOrigin(0.5).setDepth(702).setPadding(4, 2, 4, 2).setInteractive({ useHandCursor: true });
+      
+      // Event handlers
+      const updateLabels = () => {
+        masterLabel.setText(`Master Volume: ${Math.round(this.audioManager.volumes.masterVolume * 100)}%`);
+        musicLabel.setText(`Music Volume: ${Math.round(this.audioManager.volumes.musicVolume * 100)}%`);
+        sfxLabel.setText(`SFX Volume: ${Math.round(this.audioManager.volumes.sfxVolume * 100)}%`);
+        toggleButton.setText(this.audioManager.isEnabled ? 'Disable Audio' : 'Enable Audio');
+        toggleButton.setColor(this.audioManager.isEnabled ? '#ff6666' : '#66ff66');
+      };
+      
+      masterDown.on('pointerdown', () => {
+        this.audioManager.setMasterVolume(Math.max(0, this.audioManager.volumes.masterVolume - 0.1));
+        playUISound(this, 'select');
+        updateLabels();
+      });
+      
+      masterUp.on('pointerdown', () => {
+        this.audioManager.setMasterVolume(Math.min(1, this.audioManager.volumes.masterVolume + 0.1));
+        playUISound(this, 'select');
+        updateLabels();
+      });
+      
+      musicDown.on('pointerdown', () => {
+        this.audioManager.setMusicVolume(Math.max(0, this.audioManager.volumes.musicVolume - 0.1));
+        playUISound(this, 'select');
+        updateLabels();
+      });
+      
+      musicUp.on('pointerdown', () => {
+        this.audioManager.setMusicVolume(Math.min(1, this.audioManager.volumes.musicVolume + 0.1));
+        playUISound(this, 'select');
+        updateLabels();
+      });
+      
+      sfxDown.on('pointerdown', () => {
+        this.audioManager.setSFXVolume(Math.max(0, this.audioManager.volumes.sfxVolume - 0.1));
+        updateLabels();
+      });
+      
+      sfxUp.on('pointerdown', () => {
+        this.audioManager.setSFXVolume(Math.min(1, this.audioManager.volumes.sfxVolume + 0.1));
+        playUISound(this, 'select');
+        updateLabels();
+      });
+      
+      toggleButton.on('pointerdown', () => {
+        this.audioManager.toggleAudio();
+        updateLabels();
+      });
+      
+      const closeAudioSettings = () => {
+        playUISound(this, 'back');
+        modal.destroy();
+        UIRegistry.remove('audioSettings');
+      };
+      
+      closeButton.on('pointerdown', closeAudioSettings);
+      
+      // ESC to close
+      const escHandler = (event) => {
+        if (event?.preventDefault) event.preventDefault();
+        closeAudioSettings();
+      };
+      this.input.keyboard.once('keydown-ESC', escHandler);
+      
+      // Register in UI registry
+      UIRegistry.add('audioSettings', () => true);
+      
+      // Store reference for cleanup
+      modal.audioSettings = { escHandler };
     }
 
     // --- Mini-map overlay helpers ---
@@ -1341,6 +1547,7 @@ export class MainScene extends Phaser.Scene {
             else if (choice === this.meleeWeapon2) this.collectedItems.meleeWeapon2 = true;
             else if (choice === this.meleeWeapon3) this.collectedItems.meleeWeapon3 = true;
             this.showToast(`Purchased ${weaponItem.name}!`);
+            playUISound(this, 'buy');
           } else {
             // Refund if inventory full
             this._spendFromWalletShim(-price);
@@ -1362,6 +1569,7 @@ export class MainScene extends Phaser.Scene {
             else if (choice === this.shield2) this.collectedItems.shield2 = true;
             else if (choice === this.shield3) this.collectedItems.shield3 = true;
             this.showToast(`Purchased ${shieldItem.name}!`);
+            playUISound(this, 'buy');
           } else {
             this._spendFromWalletShim(-price);
             this.showToast('Inventory full!');
@@ -1421,5 +1629,21 @@ export class MainScene extends Phaser.Scene {
       const t = this.add.text(this.player.x, this.player.y - 20, msg, { fontSize: '9px', color: '#ffffff', backgroundColor: '#00000080' }).setOrigin(0.5).setDepth(600);
       if (this.worldLayer) this.worldLayer.add(t);
       this.tweens.add({ targets: t, y: t.y - 20, alpha: 0, duration: 900, onComplete: () => t.destroy() });
+    }
+
+    // Cleanup when scene is destroyed
+    shutdown() {
+      if (this.audioManager) {
+        this.audioManager.destroy();
+        this.audioManager = null;
+      }
+      if (this.characterAnimator) {
+        this.characterAnimator.destroy();
+        this.characterAnimator = null;
+      }
+      if (this.particleSystem) {
+        this.particleSystem.destroy();
+        this.particleSystem = null;
+      }
     }
 }
