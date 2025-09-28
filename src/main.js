@@ -152,7 +152,10 @@ export class MainScene extends Phaser.Scene {
       meleeWeapon3: false,
       shield1: false,
       shield2: false,
-      shield3: false
+      shield3: false,
+      healthPotion1: false,
+      healthPotion2: false,
+      staminaTonic1: false
     };
   }
 
@@ -1180,6 +1183,7 @@ export class MainScene extends Phaser.Scene {
       const tryPush = (obj) => { if (obj && obj.isShopItem && obj.active) items.push(obj); };
       tryPush(this.meleeWeapon1); tryPush(this.meleeWeapon2); tryPush(this.meleeWeapon3);
       tryPush(this.shield1); tryPush(this.shield2); tryPush(this.shield3);
+      tryPush(this.healthPotion1); tryPush(this.healthPotion2); tryPush(this.staminaTonic1);
       // Price formatting helper (silver/copper denominations)
       const fmtPrice = (p) => {
         const s = Math.floor(p / 5), c = p % 5;
@@ -1321,6 +1325,24 @@ export class MainScene extends Phaser.Scene {
           } else {
             this._spendFromWalletShim(-price);
             this.showToast('Inventory full!');
+          }
+        } else if (choice.itemType === 'consumable') {
+          // Consumables are used immediately, not added to inventory
+          choice.destroy();
+          // Mark collected to avoid respawn
+          if (choice === this.healthPotion1) this.collectedItems.healthPotion1 = true;
+          else if (choice === this.healthPotion2) this.collectedItems.healthPotion2 = true;
+          else if (choice === this.staminaTonic1) this.collectedItems.staminaTonic1 = true;
+          
+          // Apply consumable effects
+          if (choice.healAmount && choice.healAmount > 0) {
+            this.heal(choice.healAmount);
+            this.showToast(`Used ${choice.itemName}! +${choice.healAmount} HP`);
+          }
+          if (choice.staminaAmount && choice.staminaAmount > 0) {
+            this.stamina = Math.min(this.maxStamina, this.stamina + choice.staminaAmount);
+            this.updateStaminaBar();
+            this.showToast(`Used ${choice.itemName}! +${choice.staminaAmount} Stamina`);
           }
         }
         this.input.keyboard.off('keydown', onKey);

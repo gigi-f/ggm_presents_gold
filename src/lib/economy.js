@@ -94,8 +94,15 @@ const SHIELD_PRICES = {
   strong: 14
 };
 
+const CONSUMABLE_PRICES = {
+  healthPotion: 5,
+  staminaTonic: 4,
+  healingSalve: 8
+};
+
 export function getItemPrice(type, subtype) {
   if (type === 'weapon') return WEAPON_PRICES[subtype] ?? 8;
   if (type === 'shield') return SHIELD_PRICES[subtype] ?? 6;
+  if (type === 'consumable') return CONSUMABLE_PRICES[subtype] ?? 3;
   return 1;
 }
