@@ -108,6 +108,18 @@ export function placeObjectOnGrid(scene, gridX, gridY, objectType, addToGroup = 
       if (scene.worldLayer) scene.worldLayer.add(obj);
       break;
     }
+    case 'consumable': {
+      obj = scene.add.rectangle(worldPos.x, worldPos.y, extraData.width || 8, extraData.height || 12, extraData.color || 0xFF6666);
+      scene.physics.add.existing(obj);
+      obj.body.setImmovable(true);
+      obj.consumableType = extraData.consumableType;
+      obj.consumableName = extraData.consumableName;
+      obj.healAmount = extraData.healAmount || 0;
+      obj.staminaAmount = extraData.staminaAmount || 0;
+      obj.setDepth(1);
+      if (scene.worldLayer) scene.worldLayer.add(obj);
+      break;
+    }
     case 'treeTrunkSmall': {
       obj = scene.add.rectangle(worldPos.x, worldPos.y, 12, 32, 0x654321);
       scene.physics.add.existing(obj);
@@ -494,6 +506,22 @@ export function createMapObjects(scene, options = {}) {
       const obj = placeObjectOnGrid(scene, 16, 4, 'shield', null, { width: 8, height: 12, color: 0x4169E1, shieldType: 'light', shieldName: 'Magic Shield' });
       if (obj) { obj.isShopItem = true; obj.itemType = 'shield'; obj.itemSubtype = obj.shieldType; obj.itemName = obj.shieldName; }
       scene.shield3 = obj;
+    }
+    // Add health potions to the shop
+    if (!scene.collectedItems.healthPotion1) {
+      const obj = placeObjectOnGrid(scene, 4, 6, 'consumable', null, { width: 6, height: 10, color: 0xFF4444, consumableType: 'healthPotion', consumableName: 'Health Potion', healAmount: 25 });
+      if (obj) { obj.isShopItem = true; obj.itemType = 'consumable'; obj.itemSubtype = obj.consumableType; obj.itemName = obj.consumableName; }
+      scene.healthPotion1 = obj;
+    }
+    if (!scene.collectedItems.healthPotion2) {
+      const obj = placeObjectOnGrid(scene, 6, 6, 'consumable', null, { width: 6, height: 10, color: 0xFF6666, consumableType: 'healingSalve', consumableName: 'Healing Salve', healAmount: 50 });
+      if (obj) { obj.isShopItem = true; obj.itemType = 'consumable'; obj.itemSubtype = obj.consumableType; obj.itemName = obj.consumableName; }
+      scene.healthPotion2 = obj;
+    }
+    if (!scene.collectedItems.staminaTonic1) {
+      const obj = placeObjectOnGrid(scene, 8, 6, 'consumable', null, { width: 6, height: 10, color: 0x4488FF, consumableType: 'staminaTonic', consumableName: 'Stamina Tonic', staminaAmount: 30 });
+      if (obj) { obj.isShopItem = true; obj.itemType = 'consumable'; obj.itemSubtype = obj.consumableType; obj.itemName = obj.consumableName; }
+      scene.staminaTonic1 = obj;
     }
   }
 
