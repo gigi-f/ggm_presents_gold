@@ -304,6 +304,18 @@ export function createMapObjects(scene, options = {}) {
   if (scene.enemiesGroup && !options.preserveEnemies) {
     scene.enemiesGroup.clear(true, true);
   }
+  // Clear any stale shopkeeper/counter references when rebuilding the world layer to avoid missing NPCs
+  if (!options.preserveExistingWorld) {
+    if (scene.shopkeeper) {
+      try { if (scene.shopkeeper.label) scene.shopkeeper.label.destroy(); } catch (e) { /* noop */ }
+      try { scene.shopkeeper.destroy(); } catch (e) { /* noop */ }
+      scene.shopkeeper = null;
+    }
+    if (scene.shopCounter) {
+      try { scene.shopCounter.destroy(); } catch (e) { /* noop */ }
+      scene.shopCounter = null;
+    }
+  }
 
   const currentMapData = scene.maps[scene.currentMap];
   const isShop = currentMapData.type === 'shop';
@@ -451,32 +463,28 @@ export function createMapObjects(scene, options = {}) {
     scene.treeTrunks.clear();
     // Shop is now clear of obstacles - place all items here instead
     // Create a counter to block access to items behind it
-    if (!scene.shopCounter) {
-      const left = gridToWorld(scene, 2, 6);
-      const right = gridToWorld(scene, Math.floor(scene.worldPixelWidth / scene.gridCellSize) - 2, 6);
-      const width = right.x - left.x;
-      const counter = scene.add.rectangle(left.x + width / 2, left.y, width, 8, 0x5a3b2e);
-      scene.physics.add.existing(counter);
-      counter.body.setImmovable(true);
-      counter.setDepth(1);
-      scene.shopCounter = counter;
-      if (scene.worldLayer) scene.worldLayer.add(counter);
-    }
+    const left = gridToWorld(scene, 2, 6);
+    const right = gridToWorld(scene, Math.floor(scene.worldPixelWidth / scene.gridCellSize) - 2, 6);
+    const width = right.x - left.x;
+    const counter = scene.add.rectangle(left.x + width / 2, left.y, width, 8, 0x5a3b2e);
+    scene.physics.add.existing(counter);
+    counter.body.setImmovable(true);
+    counter.setDepth(1);
+    scene.shopCounter = counter;
+    if (scene.worldLayer) scene.worldLayer.add(counter);
     // Place a shopkeeper NPC near the back counter
-    if (!scene.shopkeeper) {
-      const pos = gridToWorld(scene, 10, 6);
-      scene.shopkeeper = scene.add.rectangle(pos.x, pos.y, 12, 18, 0xAA7733);
-      scene.shopkeeper.setDepth(1);
-      scene.physics.add.existing(scene.shopkeeper);
-      scene.shopkeeper.body.setImmovable(true);
-      if (scene.worldLayer) scene.worldLayer.add(scene.shopkeeper);
-      // Add a simple name tag
-      const label = scene.add.text(pos.x, pos.y - 14, 'Shopkeep', { fontSize: '7px', color: '#fff' });
-      label.setOrigin(0.5, 1);
-      label.setDepth(2);
-      if (scene.worldLayer) scene.worldLayer.add(label);
-      scene.shopkeeper.label = label;
-    }
+    const pos = gridToWorld(scene, 10, 6);
+    scene.shopkeeper = scene.add.rectangle(pos.x, pos.y, 12, 18, 0xAA7733);
+    scene.shopkeeper.setDepth(1);
+    scene.physics.add.existing(scene.shopkeeper);
+    scene.shopkeeper.body.setImmovable(true);
+    if (scene.worldLayer) scene.worldLayer.add(scene.shopkeeper);
+    // Add a simple name tag
+    const label = scene.add.text(pos.x, pos.y - 14, 'Shopkeep', { fontSize: '7px', color: '#fff' });
+    label.setOrigin(0.5, 1);
+    label.setDepth(2);
+    if (scene.worldLayer) scene.worldLayer.add(label);
+    scene.shopkeeper.label = label;
     if (!scene.collectedItems.meleeWeapon1) {
       const obj = placeObjectOnGrid(scene, 4, 4, 'weapon', null, { width: 12, height: 4, color: 0x888888, weaponType: 'basic', weaponName: 'Iron Pickaxe' });
       if (obj) { obj.isShopItem = true; obj.itemType = 'weapon'; obj.itemSubtype = obj.weaponType; obj.itemName = obj.weaponName; }

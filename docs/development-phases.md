@@ -3,6 +3,7 @@
 Last updated: 2025-09-27
 
 Recent changes (delta):
+- Fixed shopkeeper persistence: always re-created on shop entry; cleaned stale references on map rebuild so the NPC never disappears
 - Implemented shopkeeper with full-screen shop UI (wallet display, item pricing, pagination, A/D nav, C to close)
 - Added modular enemy system with a bat enemy; enemies freeze during transitions and respect combat
 - Smooth scroll transitions between maps; edge sensors/doors; input/physics locks

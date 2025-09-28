@@ -605,8 +605,12 @@ export class MainScene extends Phaser.Scene {
         if (event?.preventDefault) event.preventDefault();
         if (event?.stopPropagation) event.stopPropagation();
         const names = (UIRegistry.names && UIRegistry.names()) || [];
-        // If another UI (e.g., shop) is open, let its own handler consume ESC
+        // Prioritize closing top-most modal UIs with ESC
+        if (names.includes('shop')) { this.closeShopDialog(); return; }
+        if (names.includes('worldmap')) { this.closeWorldMap?.(); return; }
+        // If some other UI is open that's not pause, ignore here
         if (names.length > 0 && !names.includes('pause')) return;
+        // Toggle pause
         if (names.includes('pause')) this.closePauseMenu();
         else this.openPauseMenu();
       });
@@ -1359,6 +1363,7 @@ export class MainScene extends Phaser.Scene {
       this.dialogListTexts = null;
       this.dialogItemsPerPage = 0;
       this.dialogPageIndex = 0;
+      try { UIRegistry.close('shop'); } catch {}
     }
 
     purchaseHealthTonic() {
