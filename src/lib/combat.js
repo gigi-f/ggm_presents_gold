@@ -102,7 +102,10 @@ export function swingMeleeWeapon(scene) {
       })();
       const diff = Phaser.Math.Angle.WrapDegrees(enemyAngle - dirAngle);
       if (Math.abs(diff) <= 60) {
-        damageEnemy(scene, enemy, baseDamage, { source: 'melee', cooldownMs: 140, knockback: 140, stunMs: 160 });
+        // Use the current weapon sprite position as hit origin (approx.) for knockback direction
+        const hitX = scene.meleeWeaponSprite?.x ?? scene.player.x;
+        const hitY = scene.meleeWeaponSprite?.y ?? scene.player.y;
+        damageEnemy(scene, enemy, baseDamage, { source: 'melee', cooldownMs: 140, knockback: 140, stunMs: 160, hitX, hitY });
       }
     });
   }

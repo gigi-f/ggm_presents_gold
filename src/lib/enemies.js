@@ -263,12 +263,14 @@ export function damageEnemy(scene, enemy, amount = 1, opts = {}) {
     const dmgText = scene.add.text(enemy.x, enemy.y - 10, `${amount}`, { fontSize: '10px', color: '#ffea00' }).setOrigin(0.5).setDepth(999);
     scene.tweens.add({ targets: dmgText, y: dmgText.y - 16, alpha: 0, duration: 350, onComplete: () => dmgText.destroy() });
   } catch {}
-  // Apply knockback + stun
+  // Apply knockback + stun (direction away from hit origin if provided)
   try {
     const kb = opts.knockback ?? 110;
     const stunMs = opts.stunMs ?? 120;
-    if (enemy.body && scene.player) {
-      const dx = enemy.x - scene.player.x; const dy = enemy.y - scene.player.y;
+    if (enemy.body) {
+      const srcX = (opts.hitX ?? opts.from?.x ?? scene.player?.x ?? enemy.x);
+      const srcY = (opts.hitY ?? opts.from?.y ?? scene.player?.y ?? enemy.y);
+      const dx = enemy.x - srcX; const dy = enemy.y - srcY;
       const len = Math.hypot(dx, dy) || 1;
       enemy.body.setVelocity((dx / len) * kb, (dy / len) * kb);
       enemy.stunUntil = now + stunMs;
