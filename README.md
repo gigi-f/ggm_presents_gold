@@ -58,5 +58,6 @@ src/
 
 ## Project Docs
 
+- **Gameplay Manual**: `GAMEPLAY_MANUAL.md` - Complete guide for players
 - Development Phases: `docs/development-phases.md`
 - Engineering Guidelines: `.github/copilot-instructions.md` (Development Guidelines section)
