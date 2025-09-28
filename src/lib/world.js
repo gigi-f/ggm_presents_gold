@@ -7,6 +7,7 @@ import { MAP_IDS, DOOR_IDS } from './constants';
 import { getCurrencySpec } from './economy.js';
 import { createShopBuilding as genShop } from './buildings.js';
 import * as Enemies from './enemies.js';
+import { createShopkeeperSprite } from './npcSprites.js';
 
 export function initializeGrid(scene) {
   scene.gridWidth = Math.floor(scene.worldPixelWidth / scene.gridCellSize);
@@ -473,18 +474,17 @@ export function createMapObjects(scene, options = {}) {
     scene.shopCounter = counter;
     if (scene.worldLayer) scene.worldLayer.add(counter);
     // Place a shopkeeper NPC near the back counter
-    const pos = gridToWorld(scene, 10, 6);
-    scene.shopkeeper = scene.add.rectangle(pos.x, pos.y, 12, 18, 0xAA7733);
-    scene.shopkeeper.setDepth(1);
-    scene.physics.add.existing(scene.shopkeeper);
-    scene.shopkeeper.body.setImmovable(true);
-    if (scene.worldLayer) scene.worldLayer.add(scene.shopkeeper);
-    // Add a simple name tag
-    const label = scene.add.text(pos.x, pos.y - 14, 'Shopkeep', { fontSize: '7px', color: '#fff' });
-    label.setOrigin(0.5, 1);
-    label.setDepth(2);
-    if (scene.worldLayer) scene.worldLayer.add(label);
-    scene.shopkeeper.label = label;
+  const pos = gridToWorld(scene, 10, 6);
+  // Procedural shopkeeper sprite with deterministic seed for this shop
+  const seed = `${scene.currentMap}:keeper:main`;
+  scene.shopkeeper = createShopkeeperSprite(scene, pos.x, pos.y, { seed });
+  if (scene.worldLayer) scene.worldLayer.add(scene.shopkeeper);
+  // Add a simple name tag
+  const label = scene.add.text(pos.x, pos.y - (scene.shopkeeper.npcConfig?.heightPx ?? 18) - 2, 'Shopkeep', { fontSize: '7px', color: '#fff' });
+  label.setOrigin(0.5, 1);
+  label.setDepth(2);
+  if (scene.worldLayer) scene.worldLayer.add(label);
+  scene.shopkeeper.label = label;
     if (!scene.collectedItems.meleeWeapon1) {
       const obj = placeObjectOnGrid(scene, 4, 4, 'weapon', null, { width: 12, height: 4, color: 0x888888, weaponType: 'basic', weaponName: 'Iron Pickaxe' });
       if (obj) { obj.isShopItem = true; obj.itemType = 'weapon'; obj.itemSubtype = obj.weaponType; obj.itemName = obj.weaponName; }
