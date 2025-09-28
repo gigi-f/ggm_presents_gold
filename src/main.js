@@ -947,6 +947,15 @@ export class MainScene extends Phaser.Scene {
           v: 1,
           map: this.currentMap,
           visited: Array.from(this.visitedMaps || []),
+          collectedItems: {
+            meleeWeapon1: !!(this.collectedItems?.meleeWeapon1),
+            meleeWeapon2: !!(this.collectedItems?.meleeWeapon2),
+            meleeWeapon3: !!(this.collectedItems?.meleeWeapon3),
+            shield1: !!(this.collectedItems?.shield1),
+            shield2: !!(this.collectedItems?.shield2),
+            shield3: !!(this.collectedItems?.shield3)
+          },
+          collectedCurrency: Array.from(this.collectedCurrency || []),
           player: { x: Math.round(this.player.x), y: Math.round(this.player.y), hp: this.health, maxHp: this.maxHealth },
           stamina: { s: Math.round(this.stamina), m: this.maxStamina },
           wallet: this.wallet || { total: 0, counts: { copper: 0, silver: 0 } },
@@ -969,13 +978,23 @@ export class MainScene extends Phaser.Scene {
         if (!raw) { console.log('No save found'); return; }
         const data = JSON.parse(raw);
         if (!data || data.v !== 1) { console.log('Unknown save version'); return; }
-        // Map + player pos
+        // Map + visited
         this.currentMap = data.map ?? this.currentMap;
         // Restore visited tiles if present
         if (Array.isArray(data.visited)) {
           this.visitedMaps = new Set(data.visited);
         }
-        // Recreate world objects for the map
+        // Restore collected flags BEFORE rebuilding world so spawners respect them
+        this.collectedItems = {
+          meleeWeapon1: !!(data.collectedItems?.meleeWeapon1),
+          meleeWeapon2: !!(data.collectedItems?.meleeWeapon2),
+          meleeWeapon3: !!(data.collectedItems?.meleeWeapon3),
+          shield1: !!(data.collectedItems?.shield1),
+          shield2: !!(data.collectedItems?.shield2),
+          shield3: !!(data.collectedItems?.shield3)
+        };
+        this.collectedCurrency = new Set(Array.isArray(data.collectedCurrency) ? data.collectedCurrency : []);
+        // Recreate world objects for the map (now respects collected state)
         this.createMapObjects();
         // Position player
         if (this.player) { this.player.x = data.player?.x ?? this.player.x; this.player.y = data.player?.y ?? this.player.y; }

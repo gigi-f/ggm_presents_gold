@@ -17,6 +17,8 @@ Recent changes (delta):
 - Enemy variety: added Slime enemy (wander + chase)
 - Mini-map does NOT reveal gold/currency spawns to preserve exploration
 - Overworld Map overlay (O): grid of zones with fog-of-war; only visited tiles visible; highlights current tile; modal with input gating
+- Combat polish: consistent knockback for enemies from hit origin; player knockback on enemy hit; stunned enemies now dampen to a stop (no camera shake)
+- GitHub Pages fixes: Vite base set to repo path; index entry script uses relative path
 
 ### Phase 1: Core Mechanics and MVP (First Vertical Slice)
 - [x] Project Setup
@@ -69,10 +71,10 @@ Recent changes (delta):
   - [x] Hit detection and feedback (arc, numbers, puff FX)
 
 - [ ] Save/Load System
-  - [~] Player progress (position, map, HP/stamina)
-  - [~] Inventory state (items, equipment)
-  - [ ] World state
-  - [ ] Collected items
+  - [x] Player progress (position, map, HP/stamina)
+  - [x] Inventory state (items, equipment)
+  - [x] World state flags (visited tiles)
+  - [x] Collected objects (shop items flags, currency IDs)
 
   - [ ] End goal / win condition
   - [ ] Collect the 11 gold bars
