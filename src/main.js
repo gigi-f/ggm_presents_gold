@@ -571,8 +571,11 @@ export class MainScene extends Phaser.Scene {
       this.input.keyboard.on('keydown-I', (event) => {
         if (event?.preventDefault) event.preventDefault();
         if (event?.stopPropagation) event.stopPropagation();
-        if (this.isScrolling || UIRegistry.anyOpen()) {
-          console.log('Inventory blocked while UI dialog or transition is active');
+        const names = (UIRegistry.names && UIRegistry.names()) || [];
+        if (this.isScrolling) return;
+        // Permit toggling inventory if it's the only/toplevel open UI
+        if (UIRegistry.anyOpen() && !names.includes('inventory')) {
+          console.log('Inventory blocked while another UI dialog is active');
           return;
         }
         console.log('I key pressed - toggling inventory');
@@ -606,7 +609,8 @@ export class MainScene extends Phaser.Scene {
         if (event?.stopPropagation) event.stopPropagation();
         const names = (UIRegistry.names && UIRegistry.names()) || [];
         // Prioritize closing top-most modal UIs with ESC
-        if (names.includes('shop')) { this.closeShopDialog(); return; }
+  if (names.includes('shop')) { this.closeShopDialog(); return; }
+  if (names.includes('inventory')) { this.hideInventory(); this.inventoryOpen = false; return; }
         if (names.includes('worldmap')) { this.closeWorldMap?.(); return; }
         // If some other UI is open that's not pause, ignore here
         if (names.length > 0 && !names.includes('pause')) return;
@@ -822,6 +826,12 @@ export class MainScene extends Phaser.Scene {
 
     // Check if player near shopkeeper and show/hide prompt
     updateInteractionPrompt() {
+      const names = (UIRegistry.names && UIRegistry.names()) || [];
+      // Hide prompt if any modal UI is open
+      if (UIRegistry.anyOpen()) {
+        if (this.interactText) this.interactText.setVisible(false);
+        return;
+      }
       const inShop = this.currentMap === MAP_IDS.SHOP_01;
       const keep = this.shopkeeper;
       if (!inShop || !keep || !keep.active) {
@@ -1281,6 +1291,8 @@ export class MainScene extends Phaser.Scene {
 
       // Temporarily block movement inputs while dialog is open
       this.input.keyboard.enabled = true;
+      // Ensure only one active handler
+      if (this._shopKeyHandler) { try { this.input.keyboard.off('keydown', this._shopKeyHandler); } catch {} }
       const onKey = (e) => {
         const code = e.code;
         if (code === 'Escape' || code === 'KeyC') { this.input.keyboard.off('keydown', onKey); this.closeShopDialog(); return; }
@@ -1369,6 +1381,7 @@ export class MainScene extends Phaser.Scene {
         this.input.keyboard.off('keydown', onKey);
         this.closeShopDialog();
       };
+      this._shopKeyHandler = onKey;
       this.input.keyboard.on('keydown', onKey);
     }
 
@@ -1380,6 +1393,9 @@ export class MainScene extends Phaser.Scene {
       this.dialogListTexts = null;
       this.dialogItemsPerPage = 0;
       this.dialogPageIndex = 0;
+      // Remove lingering key listener if any
+      if (this._shopKeyHandler) { try { this.input.keyboard.off('keydown', this._shopKeyHandler); } catch {} }
+      this._shopKeyHandler = null;
       try { UIRegistry.close('shop'); } catch {}
     }
 
