@@ -22,7 +22,7 @@ export class MainScene extends Phaser.Scene {
     this.worldPixelWidth = 384;   // 24 cells
     this.worldPixelHeight = 288;  // 18 cells
     this.hudHeight = 64;          // HUD band height
-    this.edgeGapRadius = 1;       // entrance half-width in tiles
+  this.edgeGapRadius = 0;       // entrance half-width in tiles (tighten passages)
 
     // State flags
     this.currentMap = MAP_IDS.OVERWORLD_01;

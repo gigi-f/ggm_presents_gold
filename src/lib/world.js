@@ -8,6 +8,7 @@ import { getCurrencySpec } from './economy.js';
 import { createShopBuilding as genShop } from './buildings.js';
 import * as Enemies from './enemies.js';
 import { createShopkeeperSprite } from './npcSprites.js';
+import { generateBiomeContent } from './biomes.js';
 
 export function initializeGrid(scene) {
   scene.gridWidth = Math.floor(scene.worldPixelWidth / scene.gridCellSize);
@@ -52,7 +53,7 @@ export function createDoorContainer(scene, worldX, worldY, kind = 'entrance', me
   container.kind = kind;
 
   const cs = scene.gridCellSize ?? 16;
-  const doorRect = scene.add.rectangle(0, 0, cs + 8, cs * 2 + 4, 0x654321);
+  const doorRect = scene.add.rectangle(0, 0, cs + 8, cs * 2 + 8, 0x654321);
   scene.physics.add.existing(doorRect);
   doorRect.body.setImmovable(false);
   doorRect.setDepth(101);
@@ -184,6 +185,16 @@ export function placeObjectOnGrid(scene, gridX, gridY, objectType, addToGroup = 
       signText.setOrigin(0.5, 0.5);
       signText.setDepth(2);
       if (scene.worldLayer) scene.worldLayer.add(signText);
+      if (addToGroup) addToGroup.add(obj);
+      if (scene.worldLayer) scene.worldLayer.add(obj);
+      break;
+    }
+    case 'cactus': {
+      const h = (extraData?.height) || 14;
+      obj = scene.add.rectangle(worldPos.x, worldPos.y, 8, h, 0x2e8b57);
+      scene.physics.add.existing(obj);
+      obj.body.setImmovable(true);
+      obj.setDepth(0);
       if (addToGroup) addToGroup.add(obj);
       if (scene.worldLayer) scene.worldLayer.add(obj);
       break;
@@ -446,7 +457,7 @@ export function createMapObjects(scene, options = {}) {
   if (scene.currentMap === MAP_IDS.OVERWORLD_01) {
     scene.treeTrunks.clear();
     // Items moved to shop - overworld is now clear of weapons/shields
-    
+
     // Add currency ingots (scalable via IDs)
     const spawnCurrency = (id, gx, gy, type) => {
       if (scene.collectedCurrency && scene.collectedCurrency.has(id)) return;
@@ -468,23 +479,10 @@ export function createMapObjects(scene, options = {}) {
   // Place away from player spawn (player spawns around grid ~12,9)
   scene.goldIngot1 = spawnGold('gold:ow1:1', 16, 12);
   } else if (scene.currentMap === MAP_IDS.OVERWORLD_02) {
-    
-    placeObjectOnGrid(scene, 10, 3, 'treeTrunkLarge', scene.treeTrunks);
-    placeObjectOnGrid(scene, 5, 12, 'treeTrunkSmall', scene.treeTrunks);
-    placeObjectOnGrid(scene, 16, 8, 'treeTrunkMedium', scene.treeTrunks);
-    // Add a couple of slimes
-    try {
-      Enemies.spawnSlimeAtGrid(scene, 7, 5, { speed: 60 });
-      Enemies.spawnSlimeAtGrid(scene, 14, 11, { speed: 50 });
-    } catch (e) { console.warn('Failed to spawn slime:', e); }
+    // Desert content will be generated via biome generator
   } else if (scene.currentMap === MAP_IDS.OVERWORLD_00) {
     scene.treeTrunks.clear();
-    // Sparse props to differentiate visually
-    placeObjectOnGrid(scene, 12, 8, 'treeTrunkSmall', scene.treeTrunks);
-    // Place a bat perched on a tree just north of the trunk (sitting in the canopy)
-    try {
-      Enemies.spawnBatAtGrid(scene, 12, 7, { aggroRadius: 64, deaggroRadius: 120, speed: 90, leash: 160, damage: 10, persistentAcrossMaps: false });
-    } catch (e) { console.warn('Failed to spawn bat:', e); }
+    // Forest content will be generated via biome generator
   } else if (scene.currentMap === MAP_IDS.SHOP_01) {
     scene.treeTrunks.clear();
     // Shop is now clear of obstacles - place all items here instead
@@ -563,6 +561,13 @@ export function createMapObjects(scene, options = {}) {
   scene.physics.add.collider(scene.player, scene.treeTrunks);
   scene.physics.add.collider(scene.player, scene.buildingWalls);
   if (scene.shopCounter) scene.physics.add.collider(scene.player, scene.shopCounter);
+  // Enemies should respect world collisions
+  if (scene.enemiesGroup) {
+    scene.physics.add.collider(scene.enemiesGroup, scene.boundaryRocks);
+    scene.physics.add.collider(scene.enemiesGroup, scene.treeTrunks);
+    scene.physics.add.collider(scene.enemiesGroup, scene.buildingWalls);
+    if (scene.shopCounter) scene.physics.add.collider(scene.enemiesGroup, scene.shopCounter);
+  }
 
   // Item overlaps (disabled in shop; purchases happen via dialog)
   if (scene.currentMap !== MAP_IDS.SHOP_01) {
@@ -576,6 +581,9 @@ export function createMapObjects(scene, options = {}) {
   if (scene.copperIngot1) scene.physics.add.overlap(scene.player, scene.copperIngot1, scene.pickupCurrency, null, scene);
   if (scene.silverIngot1) scene.physics.add.overlap(scene.player, scene.silverIngot1, scene.pickupCurrency, null, scene);
   if (scene.goldIngot1) scene.physics.add.overlap(scene.player, scene.goldIngot1, scene.pickupGoldIngot, null, scene);
+
+  // Generate biome-specific props and enemies after core map scaffolding
+  try { generateBiomeContent(scene); } catch (e) { console.warn('Biome generation failed:', e); }
 
   if (scene.gridVisible) createGridVisualization(scene);
 }
