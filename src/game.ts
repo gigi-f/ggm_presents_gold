@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { SCENES } from './lib/constants';
 import { MainScene } from './main.js';
-import { UIScene } from './scenes/UIScene';
-import { TestScene } from './scenes/TestScene';
+import { UIScene } from './scenes/UIScene.js';
+import { TestScene } from './scenes/TestScene.js';
 
 const config = {
   type: Phaser.AUTO,

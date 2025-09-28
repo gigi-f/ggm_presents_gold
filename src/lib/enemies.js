@@ -4,7 +4,7 @@
  - See: docs/ai/index.json
 */
 import Phaser from 'phaser';
-import { ensureBatTexture } from './batSprite';
+import { ensureBatTexture } from './batSprite.js';
 
 // Lightweight enemy system with simple lifecycle and per-type updates
 
