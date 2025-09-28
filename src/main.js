@@ -14,6 +14,8 @@ import { ensureProspectorTexture } from './lib/playerSprite.js';
 import { updateEnemies } from './lib/enemies.js';
 import { createModal, addTitle, UI as UIRegistry } from './lib/ui.js';
 import { AudioManager, playMusic, playSFX, playPlayerAction, playEnemyAction, playPickupSound, playUISound, MUSIC_KEYS, SFX_KEYS } from './lib/audio.js';
+import { createCharacterAnimator, updateCharacterAnimation, playPlayerHitAnimation, ANIMATION_STATES } from './lib/animations.js';
+import { ParticleSystem, createHitEffect, createWeaponTrail, createCurrencySparkle, createDeathEffect, createEnvironmentalDust } from './lib/particles.js';
 
 export class MainScene extends Phaser.Scene {
   constructor() {
@@ -34,6 +36,8 @@ export class MainScene extends Phaser.Scene {
 
     // Player/inventory default state
     this.player = null;
+    this.characterAnimator = null;
+    this.particleSystem = null;
     this.shieldRaised = false;
     this.shieldKey = null;
     this.shieldSprite = null;
@@ -300,6 +304,11 @@ export class MainScene extends Phaser.Scene {
       // Update the UI Scene's health bar
   this.scene.get(SCENES.UI).updateHealthBar(this.health, this.maxHealth);
       
+      // Play hit animation
+      if (this.characterAnimator) {
+        playPlayerHitAnimation(this.characterAnimator);
+      }
+      
       // Flash the player red when taking damage
       // Sprites: use tint; Shapes: use fill color
       if (typeof this.player.setTint === 'function') {
@@ -400,6 +409,9 @@ export class MainScene extends Phaser.Scene {
       
       // Play pickup sound  
       playPickupSound(this, currencyItem.x, currencyItem.y, 'currency');
+      
+      // Create sparkle effect
+      createCurrencySparkle(this, currencyItem.x, currencyItem.y);
       
       // Add one unit to the wallet and update HUD via helper
       addToWallet(this, type, 1);
@@ -692,6 +704,12 @@ export class MainScene extends Phaser.Scene {
         this.player.body.setOffset(4, 6);
       }
 
+      // Initialize character animator
+      this.characterAnimator = createCharacterAnimator(this, this.player);
+
+      // Initialize particle system
+      this.particleSystem = new ParticleSystem(this);
+
       // Initialize grid system for object placement
       this.initializeGrid();
 
@@ -845,6 +863,23 @@ export class MainScene extends Phaser.Scene {
           ui.updateStaminaBar(Math.round(this.stamina), this.maxStamina);
         }
         this._lastStamina = this.stamina;
+      }
+
+      // Update character animations based on player state
+      if (this.characterAnimator && this.player.body) {
+        const velocity = { x: this.player.body.velocity.x, y: this.player.body.velocity.y };
+        const isAttacking = this.meleeWeaponSwinging || false;
+        updateCharacterAnimation(this.characterAnimator, velocity, isAttacking, this.lastDirection);
+      }
+
+      // Update particle system
+      if (this.particleSystem) {
+        this.particleSystem.update(time, delta);
+      }
+
+      // Periodic environmental effects
+      if (Math.random() < 0.002) { // Small chance each frame for atmosphere
+        createEnvironmentalDust(this);
       }
 
       // Enemies update
@@ -1594,6 +1629,14 @@ export class MainScene extends Phaser.Scene {
       if (this.audioManager) {
         this.audioManager.destroy();
         this.audioManager = null;
+      }
+      if (this.characterAnimator) {
+        this.characterAnimator.destroy();
+        this.characterAnimator = null;
+      }
+      if (this.particleSystem) {
+        this.particleSystem.destroy();
+        this.particleSystem = null;
       }
     }
 }

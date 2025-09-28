@@ -6,6 +6,7 @@
 import Phaser from 'phaser';
 import { damageEnemy } from './enemies';
 import { playPlayerAction } from './audio.js';
+import { createWeaponTrail } from './particles.js';
 export function swingMeleeWeapon(scene) {
   if (!scene.hasMeleeWeapon) { console.log('Cannot swing melee weapon - no weapon equipped!'); return; }
   if (scene.meleeWeaponSwinging) { console.log('Cannot swing melee weapon - already swinging!'); return; }
@@ -51,6 +52,9 @@ export function swingMeleeWeapon(scene) {
   scene.meleeWeaponSprite.setVisible(true);
   scene.meleeWeaponSprite.x = scene.player.x;
   scene.meleeWeaponSprite.y = scene.player.y;
+  
+  // Create weapon trail effect
+  createWeaponTrail(scene, scene.player.x, scene.player.y);
 
   let startAngle = -45, endAngle = 45;
   if (scene.lastDirection === 'left') { startAngle = -135; endAngle = -225; }

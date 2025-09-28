@@ -6,6 +6,7 @@
 import Phaser from 'phaser';
 import { ensureBatTexture } from './batSprite.js';
 import { playEnemyAction } from './audio.js';
+import { createHitEffect, createDeathEffect } from './particles.js';
 
 // Lightweight enemy system with simple lifecycle and per-type updates
 
@@ -286,6 +287,9 @@ export function damageEnemy(scene, enemy, amount = 1, opts = {}) {
   // Play hit sound effect
   playEnemyAction(scene, enemy, 'hit');
   
+  // Create hit particle effect
+  createHitEffect(scene, enemy.x, enemy.y);
+  
   // brief hit flash
   try { enemy.setTint?.(0xff6666); scene.time.delayedCall(80, () => enemy.clearTint?.()); } catch {}
   // floating damage number
@@ -317,6 +321,9 @@ export function killEnemy(scene, enemy) {
   
   // Play death sound effect
   playEnemyAction(scene, enemy, 'death');
+  
+  // Create death particle effect
+  createDeathEffect(scene, enemy.x, enemy.y);
   
   // Death puff FX
   try {
