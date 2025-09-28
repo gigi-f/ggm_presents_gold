@@ -3,6 +3,13 @@
 Last updated: 2025-09-27
 
 Recent changes (delta):
+- **MAJOR: Complete Audio Integration System** - AudioManager with music transitions, spatial SFX, volume controls
+- Audio: Background music changes by map type (overworld, shop, cave); fade in/out transitions
+- Audio: Sound effects for all player actions (swing, shield, hit, pickup) with spatial positioning
+- Audio: Enemy sounds (hit, death) with distance-based volume falloff  
+- Audio: UI sounds for menus, doors, shop purchases with audio feedback
+- Audio: Settings dialog in pause menu with volume sliders (Master, Music, SFX) and audio toggle
+- Audio: Persistent settings saved to localStorage; performance-optimized with sound instance limits
 - Fixed shopkeeper persistence: always re-created on shop entry; cleaned stale references on map rebuild so the NPC never disappears
 - Implemented shopkeeper with full-screen shop UI (wallet display, item pricing, pagination, A/D nav, C to close)
 - Added modular enemy system with a bat enemy; enemies freeze during transitions and respect combat
@@ -150,14 +157,14 @@ Recent changes (delta):
   - [x] UI polish (shop overlay, affordability, word-wrap)
   - [x] Transition effects (scroll, freeze enemies)
 
-- [ ] Audio Integration
-  - Background music
-  - Sound effects
-    - Player actions
-    - Enemy sounds
-    - Environmental audio
-  - Audio mixing
-  - Dynamic audio system
+- [x] Audio Integration
+  - [x] Background music (context-aware, smooth transitions)
+  - [x] Sound effects
+    - [x] Player actions (swing, shield, movement feedback)
+    - [x] Enemy sounds (hit, death with spatial audio)
+    - [x] Environmental audio (pickup sounds, door transitions)
+  - [x] Audio mixing (volume controls, settings persistence)
+  - [x] Dynamic audio system (map-based music, spatial positioning)
 
 - [ ] Additional Features
   - Weather system

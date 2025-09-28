@@ -15,6 +15,7 @@
     "inventory": "src/lib/inventory.js",
     "combat": "src/lib/combat.js",
     "economy": "src/lib/economy.js",
+    "audio": "src/lib/audio.js",
     "constants": ["src/constants.js", "src/lib/constants.ts"]
   },
   "tags": [
@@ -103,6 +104,17 @@
         { "file": "src/lib/world.js", "contains": ["placeObjectOnGrid", "spawnCurrency"], "note": "Currency objects & ids" },
         { "file": "src/main.js", "contains": ["pickupCurrency", "initWallet"], "note": "Wallet wiring" },
         { "file": "src/scenes/UIScene.js", "contains": ["updateCurrency"], "note": "HUD totals & icons" }
+      ]
+    },
+    {
+      "id": "mechanics.audio",
+      "label": "Audio system (music, SFX, spatial audio)",
+      "files": ["src/lib/audio.js", "src/main.js", "src/lib/combat.js", "src/lib/enemies.js"],
+      "anchors": [
+        { "file": "src/lib/audio.js", "contains": ["AudioManager", "playMusic", "playSFX", "playPlayerAction"], "note": "Audio manager, music transitions, spatial SFX" },
+        { "file": "src/main.js", "contains": ["audioManager", "updateMusicForMap", "openAudioSettings"], "note": "Audio integration & settings UI" },
+        { "file": "src/lib/combat.js", "contains": ["playPlayerAction(scene, 'swing')"], "note": "Combat sound effects" },
+        { "file": "src/lib/enemies.js", "contains": ["playEnemyAction"], "note": "Enemy hit & death sounds" }
       ]
     },
     {
