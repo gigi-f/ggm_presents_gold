@@ -80,6 +80,8 @@ function createBat(scene, x, y, opts) {
   bat.leash = opts.leash ?? 160;
   bat.damage = opts.damage ?? 10;
   bat.playerKnockback = opts.playerKnockback ?? 120;
+  bat.playerIFrameMs = opts.playerIFrameMs ?? 400;
+  bat.knockbackDamping = opts.knockbackDamping ?? 0.9; // per-frame velocity multiplier while stunned
   bat.hitCooldownMs = 600;
   bat._nextHitAt = 0;
   bat.persistentAcrossMaps = !!opts.persistentAcrossMaps;
@@ -130,6 +132,15 @@ function updateBat(scene, bat, time, delta) {
   if (bat.stunUntil && time < bat.stunUntil) {
     // pause bob while stunned
     const bob = bat._bobbing; if (bob && !bob.isPaused()) bob.pause();
+    // apply knockback damping so the bat slows down during stun
+    try {
+      const vx = bat.body.velocity.x; const vy = bat.body.velocity.y;
+      const d = bat.knockbackDamping ?? 0.9;
+      bat.body.setVelocity(vx * d, vy * d);
+      if (Math.abs(bat.body.velocity.x) < 2 && Math.abs(bat.body.velocity.y) < 2) {
+        bat.body.setVelocity(0, 0);
+      }
+    } catch {}
     return;
   }
 
@@ -200,6 +211,8 @@ function createSlime(scene, x, y, opts) {
   slime.health = slime.maxHealth;
   slime.speed = opts.speed ?? 60;
   slime.damage = opts.damage ?? 6;
+  slime.playerIFrameMs = opts.playerIFrameMs ?? 400;
+  slime.knockbackDamping = opts.knockbackDamping ?? 0.9;
   slime.aggroRadius = opts.aggroRadius ?? 56;
   slime.deaggroRadius = opts.deaggroRadius ?? 110;
   slime.wanderCooldown = 0;
@@ -217,6 +230,18 @@ function createSlime(scene, x, y, opts) {
 
 function updateSlime(scene, slime, time, delta) {
   if (!slime.body) return;
+  // Stunned: keep velocity but damp it over time and skip AI
+  if (slime.stunUntil && time < slime.stunUntil) {
+    try {
+      const vx = slime.body.velocity.x; const vy = slime.body.velocity.y;
+      const d = slime.knockbackDamping ?? 0.9;
+      slime.body.setVelocity(vx * d, vy * d);
+      if (Math.abs(slime.body.velocity.x) < 2 && Math.abs(slime.body.velocity.y) < 2) {
+        slime.body.setVelocity(0, 0);
+      }
+    } catch {}
+    return;
+  }
   const px = scene.player?.x ?? slime.x;
   const py = scene.player?.y ?? slime.y;
   const dist = Phaser.Math.Distance.Between(slime.x, slime.y, px, py);
