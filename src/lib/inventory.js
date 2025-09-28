@@ -4,7 +4,7 @@
  - See: docs/ai/index.json
 */
 import { SCENES } from './constants';
-import { createModal, addTitle, UI } from './ui';
+import { createModal, addTitle, UI } from './ui.js';
 
 export function addToInventory(scene, item) {
   if (scene.inventoryItems.length >= scene.maxInventorySize) return false;

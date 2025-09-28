@@ -4,9 +4,9 @@
  - See: docs/ai/index.json
 */
 import { MAP_IDS, DOOR_IDS } from './constants';
-import { getCurrencySpec } from './economy';
-import { createShopBuilding as genShop } from './buildings';
-import * as Enemies from './enemies';
+import { getCurrencySpec } from './economy.js';
+import { createShopBuilding as genShop } from './buildings.js';
+import * as Enemies from './enemies.js';
 
 export function initializeGrid(scene) {
   scene.gridWidth = Math.floor(scene.worldPixelWidth / scene.gridCellSize);
