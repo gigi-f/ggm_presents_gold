@@ -348,9 +348,11 @@ function attemptEnemyDamagePlayer(scene, enemy) {
       const dx = scene.player.x - enemy.x; const dy = scene.player.y - enemy.y;
       const len = Math.hypot(dx, dy) || 1;
       const kb = enemy.playerKnockback ?? 120;
+      // Set initial knockback impulse
       scene.player.body.setVelocity((dx / len) * kb, (dy / len) * kb);
-      // brief dampening reset
-      scene.time.delayedCall(120, () => { try { scene.player.body.setVelocity(0, 0); } catch {} });
+      // Mark knockback window so main update won't override movement
+      scene.playerKnockbackUntil = now + (enemy.playerKnockbackMs ?? 180);
+      scene.playerKnockbackDamping = enemy.playerKnockbackDamping ?? 0.9;
     }
   } catch {}
   return true;

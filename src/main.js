@@ -696,7 +696,7 @@ export class MainScene extends Phaser.Scene {
       this.createMapObjects(); // Recreate boundary rocks and map objects
     }
 
-    update(time, delta) {
+  update(time, delta) {
       if (!this.player) return;
       // Block movement and map checks while the scroll transition runs or a UI is open
       if (this.isScrolling || UIRegistry.anyOpen()) {
@@ -715,40 +715,57 @@ export class MainScene extends Phaser.Scene {
         // Input is handled via event listeners; avoid duplicating with JustDown/JustUp here to prevent double triggers.
   
       const body = this.player.body;
-      body.setVelocity(0);
-
-      // Handle movement with diagonal normalization
-      let velocityX = 0;
-      let velocityY = 0;
-      const speed = 100;
-
-      if (this.keys.left.isDown) {
-        velocityX = -speed;
-        this.lastDirection = 'left';
-      } else if (this.keys.right.isDown) {
-        velocityX = speed;
-        this.lastDirection = 'right';
-      }
-      
-      if (this.keys.up.isDown) {
-        velocityY = -speed;
-        this.lastDirection = 'up';
-      } else if (this.keys.down.isDown) {
-        velocityY = speed;
-        this.lastDirection = 'down';
+      const now = this.time?.now ?? 0;
+      const knockbackActive = !!this.playerKnockbackUntil && now < this.playerKnockbackUntil;
+      if (!knockbackActive) {
+        body.setVelocity(0);
       }
 
-      // Normalize diagonal movement to maintain consistent speed
-      if (velocityX !== 0 && velocityY !== 0) {
-        velocityX *= 0.707; // Math.sqrt(2) / 2 ≈ 0.707
-        velocityY *= 0.707;
-      }
+      // Handle movement with diagonal normalization (suppressed during hurt knockback)
+      if (!knockbackActive) {
+        let velocityX = 0;
+        let velocityY = 0;
+        const speed = 100;
 
-      body.setVelocity(velocityX, velocityY);
+        if (this.keys.left.isDown) {
+          velocityX = -speed;
+          this.lastDirection = 'left';
+        } else if (this.keys.right.isDown) {
+          velocityX = speed;
+          this.lastDirection = 'right';
+        }
+        
+        if (this.keys.up.isDown) {
+          velocityY = -speed;
+          this.lastDirection = 'up';
+        } else if (this.keys.down.isDown) {
+          velocityY = speed;
+          this.lastDirection = 'down';
+        }
+
+        // Normalize diagonal movement to maintain consistent speed
+        if (velocityX !== 0 && velocityY !== 0) {
+          velocityX *= 0.707; // Math.sqrt(2) / 2 ≈ 0.707
+          velocityY *= 0.707;
+        }
+
+        body.setVelocity(velocityX, velocityY);
+      } else {
+        // Apply knockback damping so the push tapers off smoothly
+        const d = this.playerKnockbackDamping ?? 0.9;
+        body.setVelocity(body.velocity.x * d, body.velocity.y * d);
+        if (now >= this.playerKnockbackUntil) {
+          this.playerKnockbackUntil = 0;
+        }
+      }
 
       // Update shield position if shield is raised and player is moving
-      if (this.shieldRaised && (velocityX !== 0 || velocityY !== 0)) {
-        this.updateShieldPosition();
+      if (!knockbackActive) {
+        // Update shield position if shield is raised and player is moving
+        const vx = body.velocity.x, vy = body.velocity.y;
+        if (this.shieldRaised && (vx !== 0 || vy !== 0)) {
+          this.updateShieldPosition();
+        }
       }
   
   // Overworld transitions are handled solely by edge sensors; no boundary-based triggers.
