@@ -32,6 +32,9 @@ export class MainScene extends Phaser.Scene {
     this.isScrolling = false;
     this.worldLayer = null;
   this.isPausedOverlay = false;
+    // Debug overlays
+    this.collisionDebugVisible = false;
+    this.collisionDebugGfx = null;
 
     // Player/inventory default state
     this.player = null;
@@ -644,8 +647,9 @@ export class MainScene extends Phaser.Scene {
       this.input.keyboard.on('keydown-P', (event) => {
         if (event?.preventDefault) event.preventDefault();
         if (event?.stopPropagation) event.stopPropagation();
-        console.log('P key pressed - toggling grid visibility');
+        console.log('P key pressed - toggling grid and physics-body overlay');
         this.toggleGridVisibility();
+        this.toggleCollisionDebug();
       });
 
       // Mini-map toggle (non-modal HUD overlay)
@@ -884,6 +888,54 @@ export class MainScene extends Phaser.Scene {
       
       // Update interaction prompt visibility if near the shopkeeper
       this.updateInteractionPrompt();
+
+      // Collision/physics bodies debug overlay
+      if (this.collisionDebugVisible) this._redrawCollisionDebugOverlay();
+      else if (this.collisionDebugGfx) { try { this.collisionDebugGfx.clear(); } catch {} }
+    }
+
+    // Toggle drawing of physics bodies (player + enemies) in red
+    toggleCollisionDebug() {
+      this.collisionDebugVisible = !this.collisionDebugVisible;
+      if (this.collisionDebugVisible) {
+        if (!this.collisionDebugGfx) {
+          this.collisionDebugGfx = this.add.graphics();
+          // Draw above world objects but below UI Scene
+          try { this.collisionDebugGfx.setDepth(500); } catch {}
+        }
+        this.collisionDebugGfx.setVisible(true);
+      } else {
+        if (this.collisionDebugGfx) {
+          try { this.collisionDebugGfx.clear(); this.collisionDebugGfx.setVisible(false); } catch {}
+        }
+      }
+    }
+
+    _redrawCollisionDebugOverlay() {
+      const g = this.collisionDebugGfx;
+      if (!g) return;
+      try { g.clear(); } catch {}
+      try { g.lineStyle(1, 0xff0000, 1); } catch {}
+      // Player body
+      try {
+        const pb = this.player?.body;
+        if (pb && pb.width && pb.height) {
+          g.strokeRect(pb.x, pb.y, pb.width, pb.height);
+        }
+      } catch {}
+      // Enemies bodies
+      try {
+        const grp = this.enemiesGroup;
+        if (grp && grp.getChildren) {
+          for (const e of grp.getChildren()) {
+            if (!e || !e.active) continue;
+            const b = e.body;
+            if (b && b.width && b.height) {
+              g.strokeRect(b.x, b.y, b.width, b.height);
+            }
+          }
+        }
+      } catch {}
     }
 
     // Simple heal utility used by shop purchases
