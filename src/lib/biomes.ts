@@ -3,13 +3,22 @@
  - Tags: world.biomes, mechanics.enemies
  - See: docs/ai/index.json
 */
-import { MAP_IDS } from './constants';
+import { MAP_IDS, type MapId } from './constants';
 import * as Enemies from './enemies.js';
 import { placeObjectOnGrid, getEdgeEntranceCells, createTerrainZone, createTerrainZoneFromCells } from './world.js';
 
+export type BiomeType = 'forest' | 'plains' | 'desert';
+
+type RandomFunction = () => number;
+
+interface TerrainCell {
+  gx: number;
+  gy: number;
+}
+
 // Simple deterministic PRNG (mulberry32)
-function mulberry32(seed) {
-  return function() {
+function mulberry32(seed: number): RandomFunction {
+  return function(): number {
     let t = seed += 0x6D2B79F5;
     t = Math.imul(t ^ t >>> 15, t | 1);
     t ^= t + Math.imul(t ^ t >>> 7, t | 61);
@@ -17,7 +26,7 @@ function mulberry32(seed) {
   };
 }
 
-export function getBiomeForMap(scene, mapId) {
+export function getBiomeForMap(scene: any, mapId?: MapId): BiomeType {
   const id = mapId ?? scene.currentMap;
   switch (id) {
     case MAP_IDS.OVERWORLD_00: return 'forest';
@@ -28,7 +37,7 @@ export function getBiomeForMap(scene, mapId) {
   }
 }
 
-export function generateBiomeContent(scene) {
+export function generateBiomeContent(scene: any): void {
   const currentMapData = scene.maps[scene.currentMap];
   if (!currentMapData || currentMapData.type !== 'overworld') return;
   const biome = getBiomeForMap(scene, scene.currentMap);
@@ -36,7 +45,7 @@ export function generateBiomeContent(scene) {
   // Build a buffer around overworld edge entrances so props are at least two tiles away
   const doors = scene.doorRegistry[scene.currentMap] || {};
   const edgeCells = getEdgeEntranceCells(scene);
-  const bufferCells = new Set();
+  const bufferCells = new Set<string>();
   const csW = Math.floor(scene.worldPixelWidth / scene.gridCellSize);
   const csH = Math.floor(scene.worldPixelHeight / scene.gridCellSize);
   for (const key of edgeCells) {
@@ -54,27 +63,28 @@ export function generateBiomeContent(scene) {
   for (const d of Object.values(doors)) bufferCells.add(`${d.gridX},${d.gridY}`);
 
   // Seed RNG by map id for determinism across runs
-  const seed = (typeof scene.currentMap === 'number' ? scene.currentMap : String(scene.currentMap).split('').reduce((a,c)=>a+c.charCodeAt(0),0)) + 12345;
+  const seed = (typeof scene.currentMap === 'number' ? scene.currentMap : String(scene.currentMap).split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0)) + 12345;
   const rand = mulberry32(seed);
 
   // Helper to try place an object avoiding occupied & door cells
-  const tryPlace = (gx, gy, type, group, data) => {
+  const tryPlace = (gx: number, gy: number, type: string, group?: any, data?: any): any => {
     if (gx < 1 || gy < 1) return null;
     if (bufferCells.has(`${gx},${gy}`)) return null;
     if (!scene.isGridCellAvailable(gx, gy)) return null;
     return placeObjectOnGrid(scene, gx, gy, type, group, data);
   };
+  
   // Helper: try place terrain zone (doesn't occupy cells but avoid doors/buffers)
-  const tryTerrain = (gx, gy, w, h, type, opts={}) => {
+  const tryTerrain = (gx: number, gy: number, w: number, h: number, type: string, opts: any = {}): any => {
     // Keep entire rect inside inner bounds
     if (gx < 1 || gy < 1) return null;
     if (gx + w > csW - 1 || gy + h > csH - 1) return null;
     // Build base cells
-    const cells = [];
+    const cells: TerrainCell[] = [];
     for (let ix = 0; ix < w; ix++) for (let iy = 0; iy < h; iy++) cells.push({ gx: gx + ix, gy: gy + iy });
     // Add organic single-tile tails along edges (1-3 tails); ensure at least one succeeds
     const tails = 1 + Math.floor(rand() * 3);
-    const tryAdd = (tgx, tgy) => {
+    const tryAdd = (tgx: number, tgy: number): void => {
       if (tgx < 1 || tgy < 1 || tgx >= csW - 1 || tgy >= csH - 1) return;
       const k = `${tgx},${tgy}`; if (bufferCells.has(k)) return;
       if (!cells.some(c => c.gx === tgx && c.gy === tgy)) cells.push({ gx: tgx, gy: tgy });
@@ -85,8 +95,8 @@ export function generateBiomeContent(scene) {
       const fromIdx = Math.floor(rand() * cells.length);
       const from = cells[fromIdx];
       const dir = Math.floor(rand() * 4);
-      const dx = [1,-1,0,0][dir];
-      const dy = [0,0,1,-1][dir];
+      const dx = [1, -1, 0, 0][dir];
+      const dy = [0, 0, 1, -1][dir];
       const beforeLen = cells.length;
       tryAdd(from.gx + dx, from.gy + dy);
       if (cells.length > beforeLen) addedAnyTail = true;
@@ -94,7 +104,7 @@ export function generateBiomeContent(scene) {
     // If no random tail was added (due to buffers/bounds), force a deterministic adjacent cell
     if (!addedAnyTail) {
       // pick a border cell of the rectangle and push one outward if legal
-      const candidates = [];
+      const candidates: TerrainCell[] = [];
       for (const c of cells) {
         const onEdge = (c.gx === gx || c.gx === gx + w - 1 || c.gy === gy || c.gy === gy + h - 1);
         if (!onEdge) continue;
@@ -103,7 +113,7 @@ export function generateBiomeContent(scene) {
       // deterministic pick from candidates
       const idx = candidates.length ? Math.floor(rand() * candidates.length) : 0;
       const base = candidates[idx] || { gx, gy };
-      const dirs = [ [1,0], [-1,0], [0,1], [0,-1] ];
+      const dirs: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
       for (const [dx, dy] of dirs) {
         const nx = base.gx + dx, ny = base.gy + dy;
         const k = `${nx},${ny}`;
