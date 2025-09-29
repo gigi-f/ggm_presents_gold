@@ -171,13 +171,32 @@ export function raiseShield(scene) {
   }
   updateShieldPosition(scene);
   scene.shieldSprite.setVisible(true);
-  console.log('Shield raised - now blocking!');
+  // Add physical collision so shield can push enemies away
+  try {
+    if (scene.enemiesGroup && !scene._shieldEnemyCollider) {
+      scene._shieldEnemyCollider = scene.physics.add.collider(scene.enemiesGroup, scene.shieldSprite, (enemy, shield) => {
+        // Apply a small knockback to enemy away from the shield center
+        try {
+          const dx = enemy.x - shield.x; const dy = enemy.y - shield.y;
+          const len = Math.hypot(dx, dy) || 1;
+          const kb = 120;
+          enemy.body?.setVelocity((dx/len) * kb, (dy/len) * kb);
+          enemy.stunUntil = (scene.time?.now ?? 0) + 100;
+        } catch {}
+      });
+    }
+  } catch {}
+  console.log('Shield raised - physical collider active.');
 }
 
 export function lowerShield(scene) {
   if (!scene.hasShield) { console.log('Cannot lower shield - no shield equipped!'); return; }
   scene.shieldRaised = false;
   if (scene.shieldSprite) { scene.shieldSprite.setVisible(false); scene.shieldSprite.body.enable = false; }
+  // Remove shield-enemy collider so idle shield doesn't block when lowered
+  try {
+    if (scene._shieldEnemyCollider) { scene._shieldEnemyCollider.destroy(); scene._shieldEnemyCollider = null; }
+  } catch {}
   console.log('Shield lowered - no longer blocking');
 }
 

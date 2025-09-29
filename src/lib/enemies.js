@@ -339,18 +339,6 @@ export function killEnemy(scene, enemy) {
 function attemptEnemyDamagePlayer(scene, enemy) {
   const now = scene.time?.now ?? 0;
   if (scene._nextPlayerHitAt && now < scene._nextPlayerHitAt) return false;
-  // If shield is raised and visible, block damage
-  if (scene.shieldRaised && scene.shieldSprite && scene.shieldSprite.visible) {
-    // Block FX: quick shield flash and spark
-    try {
-      scene.shieldSprite.setTint(0x88ccff);
-      scene.time.delayedCall(80, () => scene.shieldSprite.clearTint());
-      const spark = scene.add.circle(scene.shieldSprite.x, scene.shieldSprite.y, 3, 0x88ccff, 1);
-      spark.setDepth(999);
-      scene.tweens.add({ targets: spark, alpha: 0, scale: 1.5, duration: 150, onComplete: () => spark.destroy() });
-    } catch {}
-    return false;
-  }
   if (typeof scene.takeDamage === 'function') scene.takeDamage(enemy.damage ?? 1);
   scene._nextPlayerHitAt = now + (enemy.playerIFrameMs ?? 400);
   try {

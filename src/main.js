@@ -29,6 +29,8 @@ export class MainScene extends Phaser.Scene {
     this.worldPixelHeight = 288;  // 18 cells
     this.hudHeight = 64;          // HUD band height
   this.edgeGapRadius = 0;       // entrance half-width in tiles (tighten passages)
+    // Visual scale for player sprite (keep physics body at grid size)
+    this.playerDisplayScale = 1.5;
 
     // State flags
     this.currentMap = MAP_IDS.OVERWORLD_01;
@@ -694,6 +696,11 @@ export class MainScene extends Phaser.Scene {
       });
 
       this.input.keyboard.on('keydown-C', (event) => {
+        const names = (UIRegistry.names && UIRegistry.names()) || [];
+        // If inventory UI is open, let its own key handler process 'C' (submenu/inspect/etc.)
+        if (names.includes('inventory')) return; // do not prevent default; allow propagation
+        // If any other modal UI is open, ignore interact key to avoid conflicts
+        if (UIRegistry.anyOpen()) return;
         if (event?.preventDefault) event.preventDefault();
         if (event?.stopPropagation) event.stopPropagation();
         this.tryInteract();
@@ -736,16 +743,19 @@ export class MainScene extends Phaser.Scene {
   this.cameras.main.setViewport(0, this.hudHeight, this.worldPixelWidth, this.worldPixelHeight);
   this.cameras.main.setBackgroundColor(this.maps[this.currentMap].color);
   // Create player as a physics-enabled sprite using the PNG prospector texture
-  const initialPlayerTexKey = 'prospector_right';
+        const initialPlayerTexKey = 'prospector_down';
   this.player = this.physics.add.sprite(this.worldPixelWidth/2, this.worldPixelHeight/2, initialPlayerTexKey);
       this.player.setDepth(1); // Put player above ground objects
       // Player should be exactly 1x1 grid cell in size (display and collision)
       const cs = this.gridCellSize;
-      try { this.player.setDisplaySize(cs, cs); } catch {}
+      try { this.player.setDisplaySize(cs * this.playerDisplayScale, cs * this.playerDisplayScale); } catch {}
       if (this.player.body && this.player.body.setSize) {
         // Center the body on the sprite using the 'center' flag
         this.player.body.setSize(cs, cs, true);
       }
+
+            // Quantize player spawn to nearest interior grid tile center
+            try { World.quantizeObjectToGrid(this, this.player, { interior: true }); } catch {}
 
       // Initialize grid system for object placement
       this.initializeGrid();
@@ -770,8 +780,9 @@ export class MainScene extends Phaser.Scene {
       this.currentMap = newMapIndex;
       // Mark visited
       try { this.visitedMaps.add(this.currentMap); } catch {}
-      // Nudge landing to nearest safe cell to avoid overlapping walls/maze
-      const safe = World.findNearestFreeWorldPosition(this, playerX, playerY);
+  // Snap landing position to grid, then nudge to nearest free cell to avoid overlapping walls/maze
+  const snapped = World.quantizeWorldPosition(this, playerX, playerY, { interior: true });
+  const safe = World.findNearestFreeWorldPosition(this, snapped.x, snapped.y);
       this.player.x = safe.x;
       this.player.y = safe.y;
       this.cameras.main.setBackgroundColor(this.maps[this.currentMap].color);
@@ -854,9 +865,9 @@ export class MainScene extends Phaser.Scene {
           const currentKey = this.player?.texture?.key;
           if (currentKey !== desiredKey) {
             this.player.setTexture(desiredKey);
-            // Keep the sprite scaled to a single grid cell when texture changes
+            // Keep the sprite scaled consistently when texture changes
             const cs2 = this.gridCellSize;
-            try { this.player.setDisplaySize(cs2, cs2); } catch {}
+            try { this.player.setDisplaySize(cs2 * this.playerDisplayScale, cs2 * this.playerDisplayScale); } catch {}
           }
         } catch {}
       } else {
@@ -919,7 +930,8 @@ export class MainScene extends Phaser.Scene {
       // World map: nothing per-frame except input; kept static while open
       
       // Update interaction prompt visibility if near the shopkeeper
-      this.updateInteractionPrompt();
+        this.updateInteractionPrompt();
+        this.updatePickupPrompt?.();
 
       // Collision/physics bodies debug overlay
       if (this.collisionDebugVisible) this._redrawCollisionDebugOverlay();
@@ -1004,15 +1016,65 @@ export class MainScene extends Phaser.Scene {
       }
     }
 
+    // Show/Hide pickup prompt for dropped items near the player
+    updatePickupPrompt() {
+      if (UIRegistry.anyOpen()) { if (this.pickupText) this.pickupText.setVisible(false); return; }
+      const grp = this.droppedItemsGroup;
+      if (!grp) { if (this.pickupText) this.pickupText.setVisible(false); return; }
+      const items = grp.getChildren?.() || [];
+      let nearest = null, bestD = 9999;
+      for (const it of items) {
+        if (!it || !it.active) continue;
+        const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, it.x, it.y);
+        if (d < 18 && d < bestD) { nearest = it; bestD = d; }
+      }
+      if (nearest) {
+        if (!this.pickupText) {
+          this.pickupText = this.add.text(this.player.x, this.player.y - 18, 'Press C to pick up', { fontSize: '8px', color: '#ffffaa', backgroundColor: '#00000080' }).setOrigin(0.5, 1).setDepth(200);
+          if (this.worldLayer) this.worldLayer.add(this.pickupText);
+        }
+        this.pickupText.setVisible(true);
+        this.pickupText.x = this.player.x; this.pickupText.y = this.player.y - 18;
+      } else if (this.pickupText) {
+        this.pickupText.setVisible(false);
+      }
+    }
+
     tryInteract() {
-      const inShop = this.currentMap === MAP_IDS.SHOP_01;
-      const keep = this.shopkeeper;
-      if (!inShop || !keep || !keep.active) return;
-  if (this.isScrolling || UIRegistry.anyOpen()) return;
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, keep.x, keep.y);
-      if (d > 24) return;
-      if (this.interactText) this.interactText.setVisible(false);
-      this.openShopDialog();
+        // If any UI is open, ignore interactions
+        if (this.isScrolling || UIRegistry.anyOpen()) return;
+        // Pickup dropped items (if any nearby) with priority over NPC talk
+        if (this.droppedItemsGroup) {
+          const items = this.droppedItemsGroup.getChildren?.() || [];
+          let nearest = null, bestD = 9999;
+          for (const it of items) {
+            if (!it || !it.active) continue;
+            const idist = Phaser.Math.Distance.Between(this.player.x, this.player.y, it.x, it.y);
+            if (idist < 18 && idist < bestD) { nearest = it; bestD = idist; }
+          }
+          if (nearest) {
+            // Convert dropped object metadata back to inventory item shape and add
+            const meta = nearest._invItemSnapshot || {};
+            const item = { type: nearest.itemType, subtype: nearest.itemSubtype, name: nearest.itemName, ...meta };
+            const ok = this.addToInventory(item);
+            if (ok) {
+              try { nearest.destroy(); } catch {}
+              this.updateInventoryDisplay?.();
+              this.showToast?.(`Picked up ${item.name || 'item'}`);
+            } else {
+              this.showToast?.('Inventory full!');
+            }
+            return;
+          }
+        }
+        // Shopkeeper interaction if in shop and close enough
+        const inShop = this.currentMap === MAP_IDS.SHOP_01;
+        const keep = this.shopkeeper;
+        if (!inShop || !keep || !keep.active) return;
+        const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, keep.x, keep.y);
+        if (d > 24) return;
+        if (this.interactText) this.interactText.setVisible(false);
+        this.openShopDialog();
     }
 
     openPauseMenu() {

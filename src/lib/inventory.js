@@ -5,6 +5,7 @@
 */
 import { SCENES } from './constants';
 import { createModal, addTitle, UI, clampNodeToContent, avoidOverlaps, truncateTextToFit } from './ui.js';
+import * as World from './world.js';
 
 // --- Helpers: categorization and descriptions ---
 function categorizeItem(item) {
@@ -22,7 +23,7 @@ function getItemDescription(item) {
   if (!item) return 'Unknown item.';
   if (item.type === 'weapon') {
     const base = {
-      starter: 'A rusty starter dagger. Weak but reliable.',
+      starter: 'A rusty starter pickaxe. Weak but reliable.',
       basic: 'A basic melee weapon. Balanced for general use.',
       strong: 'A heavy weapon that deals strong hits but is slower.',
       fast: 'A light weapon that swings quickly but for less damage.'
@@ -49,6 +50,8 @@ function getItemDescription(item) {
 export function addToInventory(scene, item) {
   if (scene.inventoryItems.length >= scene.maxInventorySize) return false;
   scene.inventoryItems.push(item);
+  // If the inventory UI is open and visible, refresh it immediately so the new item appears
+  try { updateInventoryDisplay(scene); } catch {}
   return true;
 }
 
@@ -107,6 +110,7 @@ export function toggleInventory(scene) {
 }
 
 export function showInventory(scene) {
+  scene.inventoryOpen = true;
   if (!scene.inventoryPanel) {
     // Modal
     const modal = createModal(scene, { coverHUD: false, depthBase: 400 });
@@ -128,34 +132,44 @@ export function showInventory(scene) {
     scene._invItemNodes = [];
     scene._invHighlight = null;
 
-    // Input handling
+    // Input handling (initial mount)
     attachInventoryKeyHandlers(scene);
   }
-  // Refresh grid for current tab
-  refreshInventoryGrid(scene);
-  // Show UI
+  // Re-attach key handlers on every show to recover after prior detach
+  attachInventoryKeyHandlers(scene);
+  // Show UI first so refresh can measure and place nodes correctly
   if (scene.inventoryBackdrop) scene.inventoryBackdrop.setVisible(true);
   scene.inventoryPanel.setVisible(true);
   scene.inventoryTitle.setVisible(true);
   setTabsVisibility(scene, true);
   setGridVisibility(scene, true);
+  // Rebuild tabs and grid on every open so UI is up to date
+  renderTabs(scene);
+  refreshInventoryGrid(scene);
   UI.open('inventory');
 }
 
 export function hideInventory(scene) {
+  scene.inventoryOpen = false;
   if (!scene.inventoryPanel) return;
   if (scene.inventoryBackdrop) scene.inventoryBackdrop.setVisible(false);
   scene.inventoryPanel.setVisible(false);
   scene.inventoryTitle.setVisible(false);
   setTabsVisibility(scene, false);
   setGridVisibility(scene, false);
+  // Ensure submenu and any input overlays are fully torn down
   closeSubmenu(scene);
+  if (scene._invInspectNodes) {
+    try { scene._invInspectNodes.forEach(n => n.destroy()); } catch {}
+    scene._invInspectNodes = null;
+  }
   detachInventoryKeyHandlers(scene);
   UI.close('inventory');
 }
 
 export function updateInventoryDisplay(scene) {
   // Back-compat alias: rerender current grid
+  if (!scene.inventoryOpen || !scene.inventoryPanel || !scene.inventoryPanel.visible) return;
   refreshInventoryGrid(scene);
 }
 
@@ -173,16 +187,20 @@ export function updateEquipmentHUD(scene) {
 }
 
 export function equipDefaultWeapon(scene) {
-  const defaultWeapon = { type: 'weapon', subtype: 'starter', name: 'Rusty Dagger', color: 0x666666, size: { width: 14, height: 3 }, swingDuration: 350 };
+  const defaultWeapon = { type: 'weapon', subtype: 'starter', name: 'Rusty Pickaxe', color: 0x666666, size: { width: 14, height: 3 }, swingDuration: 350 };
   addToInventory(scene, defaultWeapon);
   equipWeapon(scene, defaultWeapon);
-  console.log('Equipped default starter weapon: Rusty Dagger');
+  console.log('Equipped default starter weapon: Rusty Pickaxe');
 }
 
 // ----------------- New UI internals -----------------
 function setTabsVisibility(scene, visible) {
   if (scene._invTabs) scene._invTabs.forEach(n => n.setVisible(visible));
   if (scene._invBottomHint) scene._invBottomHint.setVisible(visible);
+  // Restore interactivity if showing again
+  if (visible && scene._invTabs) {
+    scene._invTabs.forEach(n => { if (n?.setInteractive) n.setInteractive({ useHandCursor: true }); });
+  }
 }
 
 function setGridVisibility(scene, visible) {
@@ -270,6 +288,8 @@ function slotPosition(m, idx) {
 }
 
 function refreshInventoryGrid(scene) {
+  // Do not build grid visuals when inventory is not open/visible
+  if (!scene.inventoryOpen || !scene.inventoryPanel || !scene.inventoryPanel.visible) return;
   // Clear old nodes
   if (scene._invSlotNodes) { scene._invSlotNodes.forEach(n => { try { n.destroy(); } catch {} }); scene._invSlotNodes = []; }
   if (scene._invItemNodes) { scene._invItemNodes.forEach(n => { try { n.destroy(); } catch {} }); scene._invItemNodes = []; }
@@ -298,7 +318,7 @@ function refreshInventoryGrid(scene) {
       else if (item.type === 'shield') icon = scene.add.rectangle(pos.x, pos.y, Math.max(8, Math.round(item.size?.width || 12)), Math.max(10, Math.round(item.size?.height || 16)), item.color || 0xaaaaaa);
       else icon = scene.add.rectangle(pos.x, pos.y, 10, 10, 0xaaaaaa);
       icon.setDepth(413);
-      // Note: icons are intentionally allowed to overlap their own slot area (e.g., Rusty Dagger) but will be clamped to the grid band below tabs
+      // Note: icons are intentionally allowed to overlap their own slot area (e.g., Rusty Pickaxe) but will be clamped to the grid band below tabs
       let label = scene.add.text(pos.x, pos.y, item.name || 'Item', { fontSize: '8px', color: isEquipped ? '#00ff00' : '#ffffff', align: 'center', wordWrap: { width: m.slotW - 6 } }).setOrigin(0.5, 0.5).setDepth(413);
       // Ensure label fits and then vertically center the icon+label stack within the slot
       truncateTextToFit(label, m.slotW - 8, 2);
@@ -353,9 +373,14 @@ function clampNodeToVerticalBand(node, modal, band) {
 }
 
 function attachInventoryKeyHandlers(scene) {
-  if (scene._invKeyHandler) return;
+  if (scene._invKeyHandler) {
+    // If already attached but keyboard somehow lost it, re-bind
+    try { scene.input.keyboard.off('keydown', scene._invKeyHandler); } catch {}
+  }
   const handler = (e) => {
     if (!scene.inventoryOpen) return;
+    // If an inspect panel is open, let its closer handle keys exclusively
+    if (scene._invInspectNodes) return;
     const code = e.code;
     // If submenu is open, route to submenu
     if (scene._invMenuOpen) { handleSubmenuKey(scene, e); return; }
@@ -537,10 +562,93 @@ function applyMenuAction(scene) {
     // If equipped, clear
     if (scene.equippedWeapon === item) scene.equippedWeapon = null;
     if (scene.equippedShield === item) scene.equippedShield = null;
+    // Keep a snapshot for world object metadata before removing
+    const snapshot = { ...item };
     removeFromInventory(scene, idx);
+    // Place dropped item next to player
+    try { dropItemNextToPlayer(scene, snapshot); } catch {}
     scene.updateEquipmentHUD?.();
     refreshInventoryGrid(scene);
   }
+}
+
+// Drop an inventory item into an adjacent free grid tile near the player.
+// Preference order: facing direction, then clockwise alternatives.
+export function dropItemNextToPlayer(scene, item) {
+  if (!scene || !scene.player || !item) return false;
+  const cs = scene.gridCellSize || 16;
+  const center = { x: scene.player.x, y: scene.player.y };
+  const { gridX: gx, gridY: gy } = World.worldToGrid(scene, center.x, center.y);
+  const dir = scene.lastDirection || 'right';
+  const order = (() => {
+    switch (dir) {
+      case 'left': return [ [-1,0], [0,-1], [0,1], [1,0] ];
+      case 'up': return [ [0,-1], [1,0], [-1,0], [0,1] ];
+      case 'down': return [ [0,1], [1,0], [-1,0], [0,-1] ];
+      case 'right':
+      default: return [ [1,0], [0,-1], [0,1], [-1,0] ];
+    }
+  })();
+  let placed = null;
+  for (const [dx, dy] of order) {
+    const tx = gx + dx; const ty = gy + dy;
+    if (!World.isGridCellAvailable(scene, tx, ty)) continue;
+    const type = item.type;
+    let objectType = null; const extra = {};
+    if (type === 'weapon') {
+      objectType = 'weapon';
+      extra.width = Math.round(item.size?.width || 20);
+      extra.height = Math.round(item.size?.height || 4);
+      extra.color = item.color || 0x888888;
+      extra.weaponType = item.subtype || 'basic';
+      extra.weaponName = item.name || 'Weapon';
+    } else if (type === 'shield') {
+      objectType = 'shield';
+      extra.width = Math.round(item.size?.width || 12);
+      extra.height = Math.round(item.size?.height || 16);
+      extra.color = item.color || 0x654321;
+      extra.shieldType = item.subtype || 'basic';
+      extra.shieldName = item.name || 'Shield';
+    } else if (type === 'consumable') {
+      objectType = 'consumable';
+      extra.width = Math.round(item.size?.width || 6);
+      extra.height = Math.round(item.size?.height || 10);
+      extra.color = item.color || 0xFF6666;
+      extra.consumableType = item.consumableType || item.subtype || 'consumable';
+      extra.consumableName = item.name || 'Consumable';
+      extra.healAmount = item.healAmount || 0;
+      extra.staminaAmount = item.staminaAmount || 0;
+    }
+    if (!objectType) continue;
+    const obj = World.placeObjectOnGrid(scene, tx, ty, objectType, null, extra);
+    if (obj) {
+      placed = obj;
+      // Annotate so main scene can identify as a dropped item for pickup with C
+      obj.isDroppedItem = true;
+      obj.itemType = type;
+      obj.itemSubtype = item.subtype || extra.weaponType || extra.shieldType || extra.consumableType;
+      obj.itemName = item.name || extra.weaponName || extra.shieldName || extra.consumableName;
+      obj._invItemSnapshot = { ...item };
+      obj.setDepth?.(1);
+      // Grouping
+      if (!scene.droppedItemsGroup && scene.add) scene.droppedItemsGroup = scene.add.group();
+      try { scene.droppedItemsGroup.add(obj); } catch {}
+      if (scene.worldLayer) try { scene.worldLayer.add(obj); } catch {}
+      // Small nudge animation for feedback
+      try { scene.tweens.add({ targets: obj, y: obj.y - 4, yoyo: true, duration: 120 }); } catch {}
+      break;
+    }
+  }
+  if (!placed) {
+    // Fallback: find a nearby free position and place as a generic rectangle close by
+    try {
+      const near = World.findNearestFreeWorldPosition(scene, center.x, center.y, { maxRadius: 3 });
+      const { gridX: nx, gridY: ny } = World.worldToGrid(scene, near.x, near.y);
+      return dropItemNextToPlayer(scene, item); // attempt again with nearby grid (re-enters function)
+    } catch {}
+  }
+  if (placed && scene.showToast) scene.showToast(`Dropped ${placed.itemName || item.name || 'item'}`);
+  return !!placed;
 }
 
 function openInspectPanel(scene, item) {

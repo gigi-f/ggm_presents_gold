@@ -46,6 +46,70 @@ export function worldToGrid(scene, worldX, worldY) {
   return { gridX: Math.floor(worldX / scene.gridCellSize), gridY: Math.floor(worldY / scene.gridCellSize) };
 }
 
+/**
+ * Quantize an arbitrary world position to the center of a grid tile.
+ * Extensible options allow different rounding strategies, interior clamping, and offsets.
+ *
+ * Options:
+ * - mode: 'nearest' | 'floor' | 'ceil' (default: 'nearest')
+ * - interior: boolean — if true, clamps to interior cells [1..W-2, 1..H-2]; if false, allows edge cells [0..W-1] (default: true)
+ * - offsetX/offsetY: number — pixel offsets to add after centering (default: 0)
+ * - markOccupied: boolean — mark the chosen grid cell as occupied in scene.occupiedCells (default: false)
+ *
+ * Returns { x, y, gridX, gridY } where (x,y) is the quantized world-center.
+ */
+export function quantizeWorldPosition(scene, worldX, worldY, opts = {}) {
+  const cs = scene.gridCellSize || 16;
+  const W = scene.gridWidth ?? Math.floor(scene.worldPixelWidth / cs);
+  const H = scene.gridHeight ?? Math.floor(scene.worldPixelHeight / cs);
+  const interior = (opts.interior !== undefined) ? !!opts.interior : true;
+  const mode = opts.mode || 'nearest';
+  const clampMinGX = interior ? 1 : 0;
+  const clampMinGY = interior ? 1 : 0;
+  const clampMaxGX = interior ? (W - 2) : (W - 1);
+  const clampMaxGY = interior ? (H - 2) : (H - 1);
+
+  const roundIdx = (value) => {
+    if (mode === 'floor') return Math.floor(value);
+    if (mode === 'ceil') return Math.ceil(value);
+    return Math.round(value); // nearest
+  };
+
+  // Centers live at (n + 0.5) * cs, so find n via rounding (world/cs - 0.5)
+  let gx = roundIdx(worldX / cs - 0.5);
+  let gy = roundIdx(worldY / cs - 0.5);
+  gx = Math.max(clampMinGX, Math.min(clampMaxGX, gx));
+  gy = Math.max(clampMinGY, Math.min(clampMaxGY, gy));
+  const center = gridToWorld(scene, gx, gy);
+  const x = center.x + (opts.offsetX || 0);
+  const y = center.y + (opts.offsetY || 0);
+  if (opts.markOccupied) occupyGridCell(scene, gx, gy);
+  return { x, y, gridX: gx, gridY: gy };
+}
+
+/**
+ * Quantize a display object (e.g., sprite) to the center of the nearest grid tile.
+ * Updates obj.x/obj.y and optionally its Arcade body.
+ *
+ * Options are the same as quantizeWorldPosition, plus:
+ * - snapBody: boolean — also snap Arcade body position (if present) (default: true)
+ */
+export function quantizeObjectToGrid(scene, obj, opts = {}) {
+  if (!obj) return null;
+  const q = quantizeWorldPosition(scene, obj.x, obj.y, opts);
+  obj.x = q.x; obj.y = q.y;
+  // Keep Arcade body in sync if present
+  const snapBody = opts.snapBody !== undefined ? !!opts.snapBody : true;
+  try {
+    if (snapBody && obj.body && obj.body.type === (scene.physics?.world?.ARCADE || 0)) {
+      // body.reset centers a dynamic body at given coordinates
+      if (typeof obj.body.reset === 'function') obj.body.reset(q.x, q.y);
+      else { obj.body.x = q.x - obj.body.halfWidth; obj.body.y = q.y - obj.body.halfHeight; }
+    }
+  } catch {}
+  return q;
+}
+
 // Find the nearest free grid cell to the desired world position and return its world center.
 // Respects interior bounds (excludes border cells) and occupiedCells (maze, walls, props).
 export function findNearestFreeWorldPosition(scene, desiredX, desiredY, opts = {}) {
