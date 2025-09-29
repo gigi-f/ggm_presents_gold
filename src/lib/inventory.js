@@ -312,22 +312,17 @@ function refreshInventoryGrid(scene) {
     if (i < count) {
       const item = scene.inventoryItems[scene._invFiltered[i]];
       const isEquipped = (scene.equippedWeapon && scene.equippedWeapon === item) || (scene.equippedShield && scene.equippedShield === item);
-      // Icon
+      // Icon (centered in slot)
       let icon;
       if (item.type === 'weapon') icon = scene.add.rectangle(pos.x, pos.y, Math.max(6, Math.round((item.size?.width || 16)/2)), Math.max(8, Math.round((item.size?.height || 4)*2)), item.color || 0xaaaaaa);
       else if (item.type === 'shield') icon = scene.add.rectangle(pos.x, pos.y, Math.max(8, Math.round(item.size?.width || 12)), Math.max(10, Math.round(item.size?.height || 16)), item.color || 0xaaaaaa);
       else icon = scene.add.rectangle(pos.x, pos.y, 10, 10, 0xaaaaaa);
       icon.setDepth(413);
-      // Note: icons are intentionally allowed to overlap their own slot area (e.g., Rusty Pickaxe) but will be clamped to the grid band below tabs
-      let label = scene.add.text(pos.x, pos.y, item.name || 'Item', { fontSize: '8px', color: isEquipped ? '#00ff00' : '#ffffff', align: 'center', wordWrap: { width: m.slotW - 6 } }).setOrigin(0.5, 0.5).setDepth(413);
-      // Ensure label fits and then vertically center the icon+label stack within the slot
+      // Label under the slot box
+      let label = scene.add.text(pos.x, pos.y + m.slotH/2 + 2, item.name || 'Item', { fontSize: '8px', color: isEquipped ? '#00ff00' : '#ffffff', align: 'center', wordWrap: { width: m.slotW - 6 } })
+        .setOrigin(0.5, 0)
+        .setDepth(413);
       truncateTextToFit(label, m.slotW - 8, 2);
-      const spacing = 3;
-      const iconH = icon.height ?? icon.displayHeight ?? 0;
-      const labelH = label.height ?? 0;
-      const totalH = iconH + spacing + labelH;
-      icon.setY(pos.y - totalH / 2 + iconH / 2);
-      label.setY(icon.y + iconH / 2 + spacing + labelH / 2);
       scene._invItemNodes.push(icon, label);
       // Equipped tint
       slot.setFillStyle(isEquipped ? 0x004400 : 0x333333, isEquipped ? 0.8 : 0.7);
@@ -501,7 +496,8 @@ function openSubmenu(scene) {
   if (Math.abs(dy) > 0.01) {
     labels.forEach(t => t.setY(t.y + dy));
   }
-  avoidOverlaps([bg, scene._invHighlight].filter(Boolean), scene.inventoryModal, 2);
+  // Keep the selection highlight fixed; only adjust the submenu popup if overlapping
+  avoidOverlaps([bg], scene.inventoryModal, 2);
 }
 
 function closeSubmenu(scene) {
