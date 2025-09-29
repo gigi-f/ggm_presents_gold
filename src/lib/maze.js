@@ -46,9 +46,93 @@ export function generateMazeWalls(scene, opts = {}) {
   const H = scene.gridHeight;
   const isOverworld = scene.maps?.[scene.currentMap]?.type === 'overworld';
   if (!isOverworld) return;
+  const biome = opts.biome || scene.biome || 'plains';
 
   if (!scene.mazeWalls) scene.mazeWalls = scene.add.group();
   else scene.mazeWalls.clear(true, true);
+  // Group to render purely visual canopy sprites above the player (no collisions)
+  if (!scene.mazeDecor) scene.mazeDecor = scene.add.group(); else scene.mazeDecor.clear(true, true);
+
+  // If a maze layout for this map already exists, rebuild deterministically and return
+  const mapKey = scene.currentMap;
+  scene._mazeLayouts = scene._mazeLayouts || {};
+  const cached = scene._mazeLayouts[mapKey];
+  // Deterministic per-cell pseudo-random for style choice
+  const mapIdSeed = (typeof mapKey === 'number') ? mapKey : String(mapKey).split('').reduce((a,c)=>a + c.charCodeAt(0), 0);
+  const cellRand = (gx, gy) => {
+    let x = (mapIdSeed * 374761393) ^ (gx * 668265263) ^ (gy * 2147483647);
+    x = (x ^ (x >>> 13)) >>> 0;
+    return (x % 1000) / 1000;
+  };
+  if (Array.isArray(cached) && cached.length > 0) {
+    // Recompute blocked cells (edge entrances and building door bottoms) to filter legacy layouts
+    const blocked = new Set();
+    const keyK = (gx, gy) => `${gx},${gy}`;
+    const edgeCells = getEdgeEntranceCellsLocal(scene);
+    for (const k of edgeCells) {
+      const [gx, gy] = k.split(',').map(Number);
+      let dx = 0, dy = 0;
+      if (gy === 0) dy = 1; else if (gy === H - 1) dy = -1; else if (gx === 0) dx = 1; else if (gx === W - 1) dx = -1;
+      for (let step = 1; step <= 2; step++) {
+        const ix = gx + dx * step; const iy = gy + dy * step;
+        if (ix >= 1 && ix <= W - 2 && iy >= 1 && iy <= H - 2) blocked.add(keyK(ix, iy));
+      }
+    }
+    // Block two tiles below building entrances (and 3-wide width) so maze never encroaches doors
+    const doors = scene.doorRegistry?.[scene.currentMap] || {};
+    for (const d of Object.values(doors)) {
+      if (d?.type === 'building_entrance') {
+        const gx = d.gridX, gy = d.gridY;
+        for (let ix = gx - 1; ix <= gx + 1; ix++) {
+          for (let dy = 1; dy <= 2; dy++) {
+            const iy = gy + dy;
+            if (ix >= 1 && ix <= W - 2 && iy >= 1 && iy <= H - 2) blocked.add(keyK(ix, iy));
+          }
+        }
+      }
+    }
+    // Filter cached cells against blocked zones
+    const filtered = cached.filter(([gx, gy]) => !blocked.has(keyK(gx, gy)));
+    // Rebuild using cached coordinates; re-occupy grid cells
+    const occ = new Set(scene.occupiedCells);
+    const recordOcc = (gx, gy) => { if (!scene.occupiedCells) scene.occupiedCells = new Set(); scene.occupiedCells.add(`${gx},${gy}`); };
+    const addWallDet = (gx, gy) => {
+      const wp = gridToWorld(scene, gx, gy);
+      const r = cellRand(gx, gy);
+      let obj;
+      const forestBias = (biome === 'forest') ? 0.25 : 0;
+      const rv = r + forestBias; // nudge distribution toward tree trunks in forests
+      if (rv < 0.45) {
+        obj = scene.add.rectangle(wp.x, wp.y, cs, cs, 0x777777);
+      } else if (rv < 0.75) {
+        const radius = Math.floor(cs * 0.5);
+        obj = scene.add.circle(wp.x, wp.y, radius, 0x2e8b57);
+      } else {
+        const tw = Math.max(cs, Math.floor(cs));
+        obj = scene.add.rectangle(wp.x, wp.y, tw, cs, 0x6b3f2a);
+        // Add a simple non-colliding canopy above trunk when in forest
+        if (biome === 'forest') {
+          const canopy = scene.add.circle(wp.x, wp.y - Math.floor(cs * 0.5), Math.floor(cs * 0.9), 0x2f6f31, 0.8);
+          canopy.setDepth(3); // above player and enemies
+          scene.mazeDecor.add(canopy);
+          if (scene.worldLayer) scene.worldLayer.add(canopy);
+        }
+      }
+      scene.physics.add.existing(obj);
+      if (obj.body?.setImmovable) obj.body.setImmovable(true);
+      // Enforce at least one full grid cell collision box, centered
+      try { obj.body.setSize(cs, cs, true); } catch {}
+      obj.setDepth(0);
+      scene.mazeWalls.add(obj);
+      if (scene.worldLayer) scene.worldLayer.add(obj);
+      recordOcc(gx, gy);
+    };
+    for (const [gx, gy] of filtered) addWallDet(gx, gy);
+    // Update cached layout to the filtered one so it remains compliant going forward
+    scene._mazeLayouts[mapKey] = filtered.slice();
+    scene.lastMazeStats = { wallsCount: filtered.length, carvedCount: 0, candidates: 0, target: filtered.length };
+    return;
+  }
 
   const occ = new Set(scene.occupiedCells);
   const occHas = (gx, gy) => occ.has(`${gx},${gy}`);
@@ -135,6 +219,19 @@ export function generateMazeWalls(scene, opts = {}) {
       if (isInside(ix, iy)) blocked.add(key(ix, iy));
     }
   }
+  // Also block two tiles below any building entrances (3-wide) to keep door approaches clear
+  const doors = scene.doorRegistry?.[scene.currentMap] || {};
+  for (const d of Object.values(doors)) {
+    if (d?.type === 'building_entrance') {
+      const gx = d.gridX, gy = d.gridY;
+      for (let ix = gx - 1; ix <= gx + 1; ix++) {
+        for (let dy = 1; dy <= 2; dy++) {
+          const iy = gy + dy;
+          if (isInside(ix, iy)) blocked.add(key(ix, iy));
+        }
+      }
+    }
+  }
 
   // Aim for light density
   const interiorArea = (maxGX - minGX + 1) * (maxGY - minGY + 1);
@@ -146,25 +243,34 @@ export function generateMazeWalls(scene, opts = {}) {
   const recordWall = (gx, gy) => { placedWallsSet.add(key(gx, gy)); placedWalls.push([gx, gy]); };
   const isWallAt = (gx, gy) => placedWallsSet.has(key(gx, gy));
   const inInteriorSafe = (gx, gy) => gx >= minGX + 2 && gx <= maxGX - 2 && gy >= minGY + 2 && gy <= maxGY - 2;
-  const addWall = (gx, gy) => {
+  const addWall = (gx, gy, styleR = null) => {
     const wp = gridToWorld(scene, gx, gy);
     // Choose a style: brick, bush, or tree-like trunk
-    const r = Math.random();
+    const rRaw = (typeof styleR === 'number') ? styleR : Math.random();
+    const r = rRaw + ((biome === 'forest') ? 0.25 : 0); // forest bias toward trunks
     let obj;
     if (r < 0.5) {
       // Brick: light gray block
       obj = scene.add.rectangle(wp.x, wp.y, cs, cs, 0x777777);
     } else if (r < 0.8) {
-      // Bush: green circle (still blocks like a tile via body bounds)
-      const radius = Math.floor(cs * 0.45);
+      // Bush: green circle (visual), body will be one full tile
+      const radius = Math.floor(cs * 0.5);
       obj = scene.add.circle(wp.x, wp.y, radius, 0x2e8b57);
     } else {
-      // Tree-like: brown narrow vertical block centered in tile
-      const tw = Math.max(6, Math.floor(cs * 0.55));
+      // Tree-like: ensure at least one tile collision width
+      const tw = Math.max(cs, Math.floor(cs));
       obj = scene.add.rectangle(wp.x, wp.y, tw, cs, 0x6b3f2a);
+      if (biome === 'forest') {
+        const canopy = scene.add.circle(wp.x, wp.y - Math.floor(cs * 0.5), Math.floor(cs * 0.9), 0x2f6f31, 0.8);
+        canopy.setDepth(3);
+        scene.mazeDecor.add(canopy);
+        if (scene.worldLayer) scene.worldLayer.add(canopy);
+      }
     }
     scene.physics.add.existing(obj);
     if (obj.body?.setImmovable) obj.body.setImmovable(true);
+    // Force collision hitbox to at least 1x1 grid cell, centered on tile
+    try { obj.body.setSize(cs, cs, true); } catch {}
     obj.setDepth(0);
     scene.mazeWalls.add(obj);
     if (scene.worldLayer) scene.worldLayer.add(obj);
@@ -263,5 +369,7 @@ export function generateMazeWalls(scene, opts = {}) {
     }
   }
 
+  // Cache this layout for the current map so it remains stable across re-entries
+  scene._mazeLayouts[mapKey] = placedWalls.slice();
   scene.lastMazeStats = { wallsCount, carvedCount: carved.size, candidates: candidates.length, target };
 }

@@ -182,6 +182,7 @@ export function equipDefaultWeapon(scene) {
 // ----------------- New UI internals -----------------
 function setTabsVisibility(scene, visible) {
   if (scene._invTabs) scene._invTabs.forEach(n => n.setVisible(visible));
+  if (scene._invBottomHint) scene._invBottomHint.setVisible(visible);
 }
 
 function setGridVisibility(scene, visible) {
@@ -211,20 +212,26 @@ function renderTabs(scene) {
     x += w + 14;
     maxBottom = Math.max(maxBottom, top + txt.height + 3);
   });
-  // Hint
-  const hint = scene.add.text(modal.content.right, top, 'A/D to switch tabs, arrows to move, C to select', { fontSize: '9px', color: '#aaaaaa' }).setDepth(411).setOrigin(1, 0);
-  scene._invTabs.push(hint);
-  maxBottom = Math.max(maxBottom, top + hint.height);
+  // Controls hint moved to bottom of modal; reserve bottom band to avoid collisions with grid
+  if (scene._invBottomHint) { try { scene._invBottomHint.destroy(); } catch {} }
+  const bottomHintText = 'A/D to switch tabs • Arrows to move • C to select';
+  scene._invBottomHint = scene.add.text(modal.center.x, modal.content.bottom - 2, bottomHintText, { fontSize: '9px', color: '#aaaaaa' })
+    .setDepth(411)
+    .setOrigin(0.5, 1);
   // Clamp and avoid overlaps just in case
   scene._invTabs.forEach(n => clampNodeToContent(n, modal, 2));
   avoidOverlaps(scene._invTabs, modal, 2);
   // Record measured tab block height so the grid starts below it
   scene._invTabsBottomY = maxBottom;
 
-  // Update vertical sections: tabs band and provisional grid band (grid band refined in gridMetrics)
-  scene._invSections = scene._invSections || { tabs: { top: 0, bottom: 0 }, grid: { top: 0, bottom: 0 } };
+  // Update vertical sections: tabs band, provisional grid band, bottom-hint band
+  scene._invSections = scene._invSections || { tabs: { top: 0, bottom: 0 }, grid: { top: 0, bottom: 0 }, bottom: { top: 0, bottom: 0 } };
   scene._invSections.tabs.top = modal.content.top;
   scene._invSections.tabs.bottom = maxBottom + 4; // a small safety buffer below tabs
+  // Bottom hint band occupies the last ~14px of content
+  const bh = Math.ceil(scene._invBottomHint?.height || 12);
+  scene._invSections.bottom.top = modal.content.bottom - (bh + 2);
+  scene._invSections.bottom.bottom = modal.content.bottom;
 }
 
 function getFilteredIndices(scene) {
@@ -246,9 +253,11 @@ function gridMetrics(scene) {
   const minY = (scene._invTabsBottomY || (modal.content.top + 18 + 14)) + 14;
   const startY = Math.max(modal.content.top + 44, minY);
   // Compute a vertical band for the grid to live in (from startY down to content.bottom)
-  scene._invSections = scene._invSections || { tabs: { top: 0, bottom: 0 }, grid: { top: 0, bottom: 0 } };
+  scene._invSections = scene._invSections || { tabs: { top: 0, bottom: 0 }, grid: { top: 0, bottom: 0 }, bottom: { top: 0, bottom: 0 } };
   scene._invSections.grid.top = startY - 2; // slight headroom
-  scene._invSections.grid.bottom = modal.content.bottom;
+  // Keep grid above the bottom hint band with a small buffer
+  const bottomLimit = Math.min(modal.content.bottom, (scene._invSections.bottom?.top ?? modal.content.bottom) - 4);
+  scene._invSections.grid.bottom = bottomLimit;
   return { cols, slotW, slotH, gutter, startX, startY };
 }
 
@@ -290,14 +299,20 @@ function refreshInventoryGrid(scene) {
       else icon = scene.add.rectangle(pos.x, pos.y, 10, 10, 0xaaaaaa);
       icon.setDepth(413);
       // Note: icons are intentionally allowed to overlap their own slot area (e.g., Rusty Dagger) but will be clamped to the grid band below tabs
-      const label = scene.add.text(pos.x, pos.y + (m.slotH/2) - 9, item.name || 'Item', { fontSize: '8px', color: isEquipped ? '#00ff00' : '#ffffff', align: 'center', wordWrap: { width: m.slotW - 6 } }).setOrigin(0.5, 1).setDepth(413);
-      // Ensure label fits inside slot
+      let label = scene.add.text(pos.x, pos.y, item.name || 'Item', { fontSize: '8px', color: isEquipped ? '#00ff00' : '#ffffff', align: 'center', wordWrap: { width: m.slotW - 6 } }).setOrigin(0.5, 0.5).setDepth(413);
+      // Ensure label fits and then vertically center the icon+label stack within the slot
       truncateTextToFit(label, m.slotW - 8, 2);
+      const spacing = 3;
+      const iconH = icon.height ?? icon.displayHeight ?? 0;
+      const labelH = label.height ?? 0;
+      const totalH = iconH + spacing + labelH;
+      icon.setY(pos.y - totalH / 2 + iconH / 2);
+      label.setY(icon.y + iconH / 2 + spacing + labelH / 2);
       scene._invItemNodes.push(icon, label);
       // Equipped tint
       slot.setFillStyle(isEquipped ? 0x004400 : 0x333333, isEquipped ? 0.8 : 0.7);
     } else {
-      const label = scene.add.text(pos.x, pos.y, 'Empty', { fontSize: '8px', color: '#888888' }).setOrigin(0.5).setDepth(413);
+      const label = scene.add.text(pos.x, pos.y, 'Empty', { fontSize: '8px', color: '#888888' }).setOrigin(0.5, 0.5).setDepth(413);
       scene._invItemNodes.push(label);
     }
   }
@@ -407,16 +422,48 @@ function openSubmenu(scene) {
   if (!item) return;
   const isConsumable = item.type === 'consumable';
   const options = isConsumable ? ['Inspect', 'Use', 'Drop'] : ['Inspect', 'Equip', 'Drop'];
+  // Prevent interacting with the underlying inventory while submenu is open
+  // 1) disable tab interactivity; 2) add an invisible input blocker above the modal but below the submenu
+  try {
+    if (scene._invTabs) {
+      scene._invTabs.forEach(n => { if (n?.input) n.disableInteractive(); });
+    }
+  } catch {}
+  // Compute a depth baseline above the modal panel
+  const zBase = (scene.inventoryModal?.panel?.depth ?? 401);
+  // Create or ensure an input-blocking overlay
+  if (!scene._invInputBlocker) {
+    const modal = scene.inventoryModal;
+    const bw = modal?.size?.w ?? (scene.scale?.width || 0);
+    const bh = modal?.size?.h ?? (scene.scale?.height || 0);
+    const bx = modal?.center?.x ?? (bw / 2);
+    const by = modal?.center?.y ?? (bh / 2);
+    scene._invInputBlocker = scene.add.rectangle(bx, by, bw, bh, 0x000000, 0.001)
+      .setDepth(zBase + 98)
+      .setScrollFactor?.(0) || scene._invInputBlocker;
+    // Make it interactive to swallow pointer events
+    scene._invInputBlocker.setInteractive({ useHandCursor: false });
+    // No-op pointerdown to prevent propagation
+    scene._invInputBlocker.on('pointerdown', (e) => { e?.stopPropagation?.(); });
+  } else {
+    scene._invInputBlocker.setDepth(zBase + 98).setVisible(true);
+  }
   // Build small popup near the slot
   const m = gridMetrics(scene); const pos = slotPosition(m, scene._invHover);
   const w = 90, lineH = 14; const h = options.length * lineH + 8;
   const x = pos.x + m.slotW / 2 + 8; const y = pos.y;
-  const bg = scene.add.rectangle(x, y, w, h, 0x000000, 0.85).setStrokeStyle(1, 0xffffff).setDepth(420).setOrigin(0, 0.5);
+  // Layer submenu clearly above all inventory content
+  const bg = scene.add.rectangle(x, y, w, h, 0x000000, 0.92)
+    .setStrokeStyle(1, 0xffffff)
+    .setDepth(zBase + 100)
+    .setOrigin(0, 0.5);
   const nodes = [bg];
   const labels = [];
   let selected = 0;
   for (let i = 0; i < options.length; i++) {
-    const t = scene.add.text(x + 6, y - h/2 + 4 + i * lineH, options[i], { fontSize: '10px', color: i === selected ? '#ffff66' : '#ffffff' }).setDepth(421).setOrigin(0, 0);
+    const t = scene.add.text(x + 6, y - h/2 + 4 + i * lineH, options[i], { fontSize: '10px', color: i === selected ? '#ffff66' : '#ffffff' })
+      .setDepth(zBase + 101)
+      .setOrigin(0, 0);
     nodes.push(t); labels.push(t);
   }
   scene._invMenu = { bg, nodes, labels, options, selected, idx };
@@ -437,6 +484,14 @@ function closeSubmenu(scene) {
   const { nodes } = scene._invMenu || {};
   if (nodes) nodes.forEach(n => { try { n.destroy(); } catch {} });
   scene._invMenu = null; scene._invMenuOpen = false;
+  // Re-enable interactions and remove the input blocker
+  try {
+    if (scene._invTabs) {
+      // Only text labels were interactive; re-enable those
+      scene._invTabs.forEach(n => { if (n?.setInteractive) n.setInteractive({ useHandCursor: true }); });
+    }
+  } catch {}
+  if (scene._invInputBlocker) { try { scene._invInputBlocker.destroy(); } catch {} scene._invInputBlocker = null; }
 }
 
 function handleSubmenuKey(scene, e) {

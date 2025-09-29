@@ -8,7 +8,7 @@ import { getCurrencySpec } from './economy.js';
 import { createShopBuilding as genShop } from './buildings.js';
 import * as Enemies from './enemies.js';
 import { createShopkeeperSprite } from './npcSprites.js';
-import { generateBiomeContent } from './biomes.js';
+import { generateBiomeContent, getBiomeForMap } from './biomes.js';
 import { generateMazeWalls } from './maze.js';
 
 export function initializeGrid(scene) {
@@ -44,6 +44,32 @@ export function gridToWorld(scene, gridX, gridY) {
 
 export function worldToGrid(scene, worldX, worldY) {
   return { gridX: Math.floor(worldX / scene.gridCellSize), gridY: Math.floor(worldY / scene.gridCellSize) };
+}
+
+// Find the nearest free grid cell to the desired world position and return its world center.
+// Respects interior bounds (excludes border cells) and occupiedCells (maze, walls, props).
+export function findNearestFreeWorldPosition(scene, desiredX, desiredY, opts = {}) {
+  const maxRadius = Number.isFinite(opts.maxRadius) ? Math.max(1, opts.maxRadius) : 6;
+  const { gridX: sx, gridY: sy } = worldToGrid(scene, desiredX, desiredY);
+  const W = scene.gridWidth ?? Math.floor(scene.worldPixelWidth / scene.gridCellSize);
+  const H = scene.gridHeight ?? Math.floor(scene.worldPixelHeight / scene.gridCellSize);
+  const inInterior = (gx, gy) => gx >= 1 && gx <= W - 2 && gy >= 1 && gy <= H - 2;
+  const free = (gx, gy) => inInterior(gx, gy) && isGridCellAvailable(scene, gx, gy);
+  if (free(sx, sy)) return gridToWorld(scene, sx, sy);
+  for (let r = 1; r <= maxRadius; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        // Check perimeter of the square ring only for efficiency
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+        const gx = sx + dx, gy = sy + dy;
+        if (free(gx, gy)) return gridToWorld(scene, gx, gy);
+      }
+    }
+  }
+  // Fallback: center of the map if nothing found
+  const fallbackGX = Math.max(1, Math.min(W - 2, Math.floor(W / 2)));
+  const fallbackGY = Math.max(1, Math.min(H - 2, Math.floor(H / 2)));
+  return gridToWorld(scene, fallbackGX, fallbackGY);
 }
 
 export function createDoorContainer(scene, worldX, worldY, kind = 'entrance', meta = {}) {
@@ -602,8 +628,8 @@ export function createMapObjects(scene, options = {}) {
   }
 
   createDoorsForMap(scene);
-  // Generate maze walls before wiring colliders so physics includes them
-  try { generateMazeWalls(scene); } catch (e) { console.warn('Maze generation failed:', e); }
+  // Generate maze walls before wiring colliders so physics includes them (pass biome for style bias)
+  try { generateMazeWalls(scene, { biome: getBiomeForMap(scene, scene.currentMap) }); } catch (e) { console.warn('Maze generation failed:', e); }
 
   // Colliders (after maze so new group is included)
   scene.physics.add.collider(scene.player, scene.boundaryRocks);
@@ -611,13 +637,17 @@ export function createMapObjects(scene, options = {}) {
   scene.physics.add.collider(scene.player, scene.buildingWalls);
   if (scene.mazeWalls) scene.physics.add.collider(scene.player, scene.mazeWalls);
   if (scene.shopCounter) scene.physics.add.collider(scene.player, scene.shopCounter);
-  // Enemies should respect world collisions
+  // Enemies should respect world collisions, except flying enemies (bats) which can pass over
   if (scene.enemiesGroup) {
-    scene.physics.add.collider(scene.enemiesGroup, scene.boundaryRocks);
-    scene.physics.add.collider(scene.enemiesGroup, scene.treeTrunks);
-    scene.physics.add.collider(scene.enemiesGroup, scene.buildingWalls);
-    if (scene.mazeWalls) scene.physics.add.collider(scene.enemiesGroup, scene.mazeWalls);
-    if (scene.shopCounter) scene.physics.add.collider(scene.enemiesGroup, scene.shopCounter);
+    const blockNonBats = (a, b) => {
+      const e = a?.enemyType ? a : (b?.enemyType ? b : null);
+      return !(e && e.enemyType === 'bat');
+    };
+    scene.physics.add.collider(scene.enemiesGroup, scene.boundaryRocks, null, blockNonBats, scene);
+    scene.physics.add.collider(scene.enemiesGroup, scene.treeTrunks, null, blockNonBats, scene);
+    scene.physics.add.collider(scene.enemiesGroup, scene.buildingWalls, null, blockNonBats, scene);
+    if (scene.mazeWalls) scene.physics.add.collider(scene.enemiesGroup, scene.mazeWalls, null, blockNonBats, scene);
+    if (scene.shopCounter) scene.physics.add.collider(scene.enemiesGroup, scene.shopCounter, null, blockNonBats, scene);
   }
 
   // Item overlaps (disabled in shop; purchases happen via dialog)
@@ -729,9 +759,9 @@ export function createTerrainZoneFromCells(scene, cells, type = 'marsh', opts = 
     // Draw small square blocks for a more grainy, blocky quicksand look
     const blocks = 4 + Math.floor(rand() * 3); // 4-6
     for (let i = 0; i < blocks; i++) {
-      const rx = (rand() - 0.5) * (cs - 6);
-      const ry = (rand() - 0.5) * (cs - 6);
-      const s = 2 + Math.floor(rand() * 3); // 2..4 px square
+      const rx = (rand() - 0.5) * (cs - 4);
+      const ry = (rand() - 0.5) * (cs - 3);
+      const s = 1 + 2; // 2..4 px square
       g.fillStyle(0xf7ca8d, 0.9);
       g.fillRect(Math.round(baseX + rx - s / 2), Math.round(baseY + ry - s / 2), s, s);
     }

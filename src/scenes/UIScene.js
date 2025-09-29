@@ -16,6 +16,8 @@ export class UIScene extends Phaser.Scene {
         this.shieldIcon = null;
         this.weaponLabel = null;
         this.shieldLabel = null;
+        // Biome label
+        this.biomeText = null;
         
         // Currency display elements
         this.currencyText = null;
@@ -46,6 +48,8 @@ export class UIScene extends Phaser.Scene {
 
         // Create gold ingot counter
         this.createGoldCounter();
+    // Create biome label (initially empty; MainScene will set value)
+    this.createBiomeLabel();
         
         // Make sure UI stays on top
         this.scene.bringToTop();
@@ -233,6 +237,25 @@ export class UIScene extends Phaser.Scene {
         // Color shift: low stamina becomes more orange/red
         const color = ratio > 0.5 ? 0x00cc66 : (ratio > 0.25 ? 0xff9900 : 0xcc3333);
         this.staminaFill.setFillStyle(color);
+    }
+
+    createBiomeLabel() {
+        const x = 20;
+        const y = 34; // within HUD band, below stamina
+        this.biomeText = this.add.text(x, y, '', { fontSize: '9px', fill: '#ffffff' });
+        this.biomeText.setOrigin(0, 0.5);
+        this.biomeText.setScrollFactor(0);
+        this.biomeText.setDepth(2);
+        this.biomeText.setAlpha(0.95);
+    }
+
+    updateBiome(name) {
+        if (!this.biomeText) return;
+        const label = name ? `${name[0].toUpperCase()}${name.slice(1)}` : '';
+        this.biomeText.setText(label);
+        // Optional tinting for quick visual cue
+        const color = (name === 'forest') ? '#a7e17e' : (name === 'desert') ? '#efd9a6' : '#cfe8ff';
+        this.biomeText.setColor(color);
     }
 
     updateHealthBar(health, maxHealth) {

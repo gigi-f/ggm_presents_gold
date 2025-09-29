@@ -4,7 +4,9 @@
  - See: docs/ai/index.json
 */
 import Phaser from 'phaser';
+import wolfPng from '../assets/sprites/wolf.png';
 import { MAP_IDS, DOOR_IDS, SCENES } from './lib/constants';
+import { getBiomeForMap } from './lib/biomes.js';
 import * as World from './lib/world.js';
 import { beginTransition, endTransition, scrollTransitionToMap as scrollXfer } from './lib/transitions.js';
 import * as Inventory from './lib/inventory.js';
@@ -74,7 +76,7 @@ export class MainScene extends Phaser.Scene {
   this.staminaRegenPerSec = 20; // points per second when not drained
   this._lastStamina = this.stamina;
   // Mini-map overlay (non-blocking)
-  this.miniMapVisible = false;
+  this.miniMapVisible = true;
   this.miniMapContainer = null;
   this.miniMapCfg = { width: 100, margin: 6 };
   this._miniMapLastMap = null;
@@ -234,7 +236,7 @@ export class MainScene extends Phaser.Scene {
       }
     }
 
-    handleEdgeExit(player, sensor) {
+  handleEdgeExit(player, sensor) {
       // Do not re-trigger during a transition or while scrolling
       if (this.transitionLock || this.isScrolling) return;
 
@@ -254,37 +256,50 @@ export class MainScene extends Phaser.Scene {
           'edge_south': 'down'
         };
         const direction = sourceDoorData ? dirMap[sourceDoorData.type] : null;
-
-        // Compute landing position: keep axis aligned with travel
-        // Horizontal travel (left/right): preserve player's Y, adjust X just inside target edge
-        // Vertical travel (up/down): preserve player's X, adjust Y just inside target edge
-        let x = this.player.x;
-        let y = this.player.y;
+        // Compute landing grid cell exactly one tile inside the target edge, aligned to the entrance span
+        const Wg = Math.floor(W / cs), Hg = Math.floor(H / cs);
+        const maxGX = Wg - 1, maxGY = Hg - 1;
+        const mapType = this.maps?.[targetInfo.targetMap]?.type;
+        const baseHalf = () => {
+          const raw = Number.isFinite(targetDoorData?.entranceHalfWidth)
+            ? Math.floor(targetDoorData.entranceHalfWidth)
+            : Math.floor(this.edgeGapRadius ?? 0);
+          const minHalf = (mapType === 'overworld') ? 1 : 0;
+          return Math.max(minHalf, Math.max(0, raw));
+        };
+        const half = baseHalf();
+        // Player's current grid indices
+        const pGX = Math.floor(this.player.x / cs);
+        const pGY = Math.floor(this.player.y / cs);
+        let gx = pGX, gy = pGY;
         if (direction === 'right' || targetDoorData.type === 'edge_west') {
-          // Entering from the left into the target map's west edge
-          x = cs * 2; // just inside beyond the west sensor
-          y = this.player.y; // preserve vertical position
+          gx = 1;
+          const gyMin = Math.max(1, (targetDoorData.gridY - half));
+          const gyMax = Math.min(maxGY - 1, (targetDoorData.gridY + half));
+          gy = Math.min(gyMax, Math.max(gyMin, pGY));
         } else if (direction === 'left' || targetDoorData.type === 'edge_east') {
-          // Entering from the right into the target map's east edge
-          x = W - cs * 2; // just inside beyond the east sensor
-          y = this.player.y; // preserve vertical position
+          gx = maxGX - 1;
+          const gyMin = Math.max(1, (targetDoorData.gridY - half));
+          const gyMax = Math.min(maxGY - 1, (targetDoorData.gridY + half));
+          gy = Math.min(gyMax, Math.max(gyMin, pGY));
         } else if (direction === 'up' || targetDoorData.type === 'edge_south') {
-          // Entering from the bottom into the target map's south edge
-          y = H - cs * 2; // just inside beyond the south sensor
-          x = this.player.x; // preserve horizontal position
+          gy = maxGY - 1;
+          const gxMin = Math.max(1, (targetDoorData.gridX - half));
+          const gxMax = Math.min(maxGX - 1, (targetDoorData.gridX + half));
+          gx = Math.min(gxMax, Math.max(gxMin, pGX));
         } else if (direction === 'down' || targetDoorData.type === 'edge_north') {
-          // Entering from the top into the target map's north edge
-          y = cs * 2; // just inside beyond the north sensor
-          x = this.player.x; // preserve horizontal position
+          gy = 1;
+          const gxMin = Math.max(1, (targetDoorData.gridX - half));
+          const gxMax = Math.min(maxGX - 1, (targetDoorData.gridX + half));
+          gx = Math.min(gxMax, Math.max(gxMin, pGX));
         }
-
-        // If we're in an overworld map, use smooth scrolling based on the source edge
+        const wp = this.gridToWorld(gx, gy);
 
         if (this.maps[this.currentMap]?.type === 'overworld' && direction) {
-          this.scrollTransitionToMap(direction, targetInfo.targetMap, x, y);
+          // Smooth scroll to exact landing cell in the target map
+          this.scrollTransitionToMap(direction, targetInfo.targetMap, wp.x, wp.y);
         } else {
-          // Fallback to instant transition (e.g., for non-overworld maps)
-          this.transitionToMapWithLock(targetInfo.targetMap, x, y);
+          this.transitionToMapWithLock(targetInfo.targetMap, wp.x, wp.y);
         }
       }
     }
@@ -510,7 +525,12 @@ export class MainScene extends Phaser.Scene {
       }
     }
   
-    preload() {}
+    preload() {
+      // Preload enemy sprites so runtime can reference assets directly
+      try {
+        this.load.image('wolf', wolfPng);
+      } catch {}
+    }
   
   create() {
       // Initialize wallet/currency tracking early
@@ -536,6 +556,8 @@ export class MainScene extends Phaser.Scene {
               }
             // Initialize gold ingot HUD
             this.scene.get(SCENES.UI).updateGoldIngots?.(this.goldIngotsCount || 0, this.goldGoal || 11);
+            // Initialize biome label
+            try { this.scene.get(SCENES.UI).updateBiome?.(getBiomeForMap(this, this.currentMap)); } catch {}
         
         // Use a small delay to ensure UI is fully ready before equipping and updating
         this.time.delayedCall(50, () => {
@@ -702,10 +724,12 @@ export class MainScene extends Phaser.Scene {
   const playerTexKey = ensureProspectorTexture(this);
   this.player = this.physics.add.sprite(this.worldPixelWidth/2, this.worldPixelHeight/2, playerTexKey);
       this.player.setDepth(1); // Put player above ground objects
-      // Reasonable body size for a 20x24 sprite; adjust offset to center
+      // Player should be exactly 1x1 grid cell in size (display and collision)
+      const cs = this.gridCellSize;
+      try { this.player.setDisplaySize(cs, cs); } catch {}
       if (this.player.body && this.player.body.setSize) {
-        this.player.body.setSize(12, 18);
-        this.player.body.setOffset(4, 6);
+        // Center the body on the sprite using the 'center' flag
+        this.player.body.setSize(cs, cs, true);
       }
 
       // Initialize grid system for object placement
@@ -731,10 +755,14 @@ export class MainScene extends Phaser.Scene {
       this.currentMap = newMapIndex;
       // Mark visited
       try { this.visitedMaps.add(this.currentMap); } catch {}
-      this.player.x = playerX;
-      this.player.y = playerY;
+      // Nudge landing to nearest safe cell to avoid overlapping walls/maze
+      const safe = World.findNearestFreeWorldPosition(this, playerX, playerY);
+      this.player.x = safe.x;
+      this.player.y = safe.y;
       this.cameras.main.setBackgroundColor(this.maps[this.currentMap].color);
       this.createMapObjects(); // Recreate boundary rocks and map objects
+      // Update biome HUD on map change
+      try { this.scene.get(SCENES.UI)?.updateBiome?.(getBiomeForMap(this, this.currentMap)); } catch {}
     }
 
   update(time, delta) {
@@ -1052,6 +1080,14 @@ export class MainScene extends Phaser.Scene {
           v: 1,
           map: this.currentMap,
           visited: Array.from(this.visitedMaps || []),
+          mazeLayouts: (() => {
+            const out = {};
+            const src = this._mazeLayouts || {};
+            for (const k of Object.keys(src)) {
+              if (Array.isArray(src[k])) out[k] = src[k];
+            }
+            return out;
+          })(),
           collectedItems: {
             meleeWeapon1: !!(this.collectedItems?.meleeWeapon1),
             meleeWeapon2: !!(this.collectedItems?.meleeWeapon2),
@@ -1089,6 +1125,14 @@ export class MainScene extends Phaser.Scene {
         // Restore visited tiles if present
         if (Array.isArray(data.visited)) {
           this.visitedMaps = new Set(data.visited);
+        }
+        // Restore maze layouts (lock mazes to prior shapes)
+        if (data.mazeLayouts && typeof data.mazeLayouts === 'object') {
+          this._mazeLayouts = {};
+          for (const k of Object.keys(data.mazeLayouts)) {
+            const arr = data.mazeLayouts[k];
+            if (Array.isArray(arr)) this._mazeLayouts[k] = arr.map(p => Array.isArray(p) ? [p[0]|0, p[1]|0] : p);
+          }
         }
         // Restore collected flags BEFORE rebuilding world so spawners respect them
         this.collectedItems = {
@@ -1129,6 +1173,7 @@ export class MainScene extends Phaser.Scene {
           ui.updateCurrency(w.total || 0, w.counts.copper || 0, w.counts.silver || 0);
           ui.updateStaminaBar?.(this.stamina, this.maxStamina);
           ui.updateGoldIngots?.(this.goldIngotsCount || 0, this.goldGoal || 11);
+          try { ui.updateBiome?.(getBiomeForMap(this, this.currentMap)); } catch {}
           this.updateEquipmentHUD();
         }
         console.log('Game loaded.');

@@ -368,8 +368,8 @@ function attemptEnemyDamagePlayer(scene, enemy) {
       let len = Math.hypot(dx, dy) || 1;
       let dir = { x: dx / len, y: dy / len };
 
-      // Choose a safe knockback direction that won't immediately push into a blocking obstacle
-      dir = chooseSafeKnockbackDir(scene, scene.player, dir.x, dir.y);
+  // Choose a safe knockback direction that won't immediately push into a blocking obstacle
+  dir = chooseSafeKnockbackDir(scene, scene.player, dir.x, dir.y, enemy);
       // Apply knockback impulse
       scene.player.body.setVelocity(dir.x * kb, dir.y * kb);
       // Mark knockback window so main update won't override movement
@@ -384,20 +384,22 @@ function attemptEnemyDamagePlayer(scene, enemy) {
 }
 
 // --- Knockback safety helpers ---
-function isBlockedAt(scene, cx, cy, w, h, ignoreBody) {
+function isBlockedAt(scene, cx, cy, w, h, ignoreBody, enemyContext = null) {
   try {
     const hits = scene.physics.world.overlapRect(cx - w / 2, cy - h / 2, w, h, true, true);
     for (const b of hits) {
       if (!b || !b.enable) continue;
       if (ignoreBody && b === ignoreBody) continue;
-      // Treat immovable bodies (rocks, tree trunks, walls, counters) as blocking
-      if (b.immovable) return true;
+  // Treat immovable bodies (rocks, tree trunks, walls, counters) as blocking
+  // Flying enemies can pass over environment; allow if enemyContext is a bat
+  const isFlyingEnemy = enemyContext && enemyContext.enemyType === 'bat';
+  if (b.immovable && !isFlyingEnemy) return true;
     }
   } catch {}
   return false;
 }
 
-function chooseSafeKnockbackDir(scene, player, dx, dy) {
+function chooseSafeKnockbackDir(scene, player, dx, dy, enemyContext = null) {
   const body = player.body;
   if (!body) return { x: dx, y: dy };
   const step = Math.max(8, Math.ceil(Math.max(body.width, body.height) * 0.75));
@@ -420,7 +422,7 @@ function chooseSafeKnockbackDir(scene, player, dx, dy) {
     const ux = v.x / len, uy = v.y / len;
     const testX = player.x + ux * step;
     const testY = player.y + uy * step;
-    if (!isBlockedAt(scene, testX, testY, body.width, body.height, body)) {
+    if (!isBlockedAt(scene, testX, testY, body.width, body.height, body, enemyContext)) {
       return { x: ux, y: uy };
     }
   }

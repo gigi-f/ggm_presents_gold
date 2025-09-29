@@ -6,6 +6,7 @@
 // Transition helpers for smooth overworld scrolling and input/physics locking
 // This module is pure JS to avoid adding TS friction before Node deps are installed.
 import { freezeEnemies } from './enemies';
+import { getBiomeForMap } from './biomes.js';
 
 /** Begin a transition: lock input and physics */
 export function beginTransition(scene) {
@@ -64,6 +65,8 @@ export function scrollTransitionToMap(scene, direction, newMapId, playerX, playe
   const targetColor = scene.maps[newMapId].color;
   scene.currentMap = newMapId;
   scene.cameras.main.setBackgroundColor(targetColor);
+  // Update biome HUD immediately
+  try { scene.scene.get('UIScene')?.updateBiome?.(getBiomeForMap(scene, scene.currentMap)); } catch {}
 
   // Build new map into newLayer; preserve enemies so persistent ones can be rehomed
   scene.worldLayer = newLayer;
@@ -106,6 +109,8 @@ export function scrollTransitionToMap(scene, direction, newMapId, playerX, playe
   });
 
   if (scene.player) {
+    // Tween the player to the exact landing coordinates provided by the caller.
+    // Do not adjust to nearest-free to preserve exact alignment through the passageway.
     scene.tweens.add({ targets: scene.player, x: playerX, y: playerY, duration: 750, ease: 'Sine.easeInOut' });
   }
 }
