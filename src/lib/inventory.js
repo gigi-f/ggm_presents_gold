@@ -4,7 +4,7 @@
  - See: docs/ai/index.json
 */
 import { SCENES } from './constants';
-import { createModal, addTitle, UI } from './ui.js';
+import { createModal, addTitle, UI, clampNodeToContent, avoidOverlaps, truncateTextToFit } from './ui.js';
 
 // --- Helpers: categorization and descriptions ---
 function categorizeItem(item) {
@@ -120,6 +120,9 @@ export function showInventory(scene) {
     scene._invActiveTab = scene._invActiveTab || 'weapons';
     renderTabs(scene);
 
+  // Initialize section bands (vertical regions) used to keep UI categories on distinct Y ranges
+  scene._invSections = scene._invSections || { tabs: { top: 0, bottom: 0 }, grid: { top: 0, bottom: 0 } };
+
     // Grid containers
     scene._invSlotNodes = [];
     scene._invItemNodes = [];
@@ -193,6 +196,7 @@ function renderTabs(scene) {
   const modal = scene.inventoryModal;
   const top = modal.content.top + 18;
   let x = modal.content.left + 6;
+  let maxBottom = top;
   TAB_ORDER.forEach((tabKey, idx) => {
     const label = TAB_LABELS[tabKey];
     const isActive = scene._invActiveTab === tabKey;
@@ -205,10 +209,22 @@ function renderTabs(scene) {
     txt.setInteractive({ useHandCursor: true });
     txt.on('pointerdown', () => { scene._invActiveTab = tabKey; refreshInventoryGrid(scene); renderTabs(scene); });
     x += w + 14;
+    maxBottom = Math.max(maxBottom, top + txt.height + 3);
   });
   // Hint
   const hint = scene.add.text(modal.content.right, top, 'A/D to switch tabs, arrows to move, C to select', { fontSize: '9px', color: '#aaaaaa' }).setDepth(411).setOrigin(1, 0);
   scene._invTabs.push(hint);
+  maxBottom = Math.max(maxBottom, top + hint.height);
+  // Clamp and avoid overlaps just in case
+  scene._invTabs.forEach(n => clampNodeToContent(n, modal, 2));
+  avoidOverlaps(scene._invTabs, modal, 2);
+  // Record measured tab block height so the grid starts below it
+  scene._invTabsBottomY = maxBottom;
+
+  // Update vertical sections: tabs band and provisional grid band (grid band refined in gridMetrics)
+  scene._invSections = scene._invSections || { tabs: { top: 0, bottom: 0 }, grid: { top: 0, bottom: 0 } };
+  scene._invSections.tabs.top = modal.content.top;
+  scene._invSections.tabs.bottom = maxBottom + 4; // a small safety buffer below tabs
 }
 
 function getFilteredIndices(scene) {
@@ -226,7 +242,13 @@ function gridMetrics(scene) {
   const cols = 4;
   const slotW = 38, slotH = 38, gutter = 8;
   const startX = modal.content.left + 10;
-  const startY = modal.content.top + 48; // below tabs
+  // below tabs (use measured bottom if available)
+  const minY = (scene._invTabsBottomY || (modal.content.top + 18 + 14)) + 14;
+  const startY = Math.max(modal.content.top + 44, minY);
+  // Compute a vertical band for the grid to live in (from startY down to content.bottom)
+  scene._invSections = scene._invSections || { tabs: { top: 0, bottom: 0 }, grid: { top: 0, bottom: 0 } };
+  scene._invSections.grid.top = startY - 2; // slight headroom
+  scene._invSections.grid.bottom = modal.content.bottom;
   return { cols, slotW, slotH, gutter, startX, startY };
 }
 
@@ -267,7 +289,10 @@ function refreshInventoryGrid(scene) {
       else if (item.type === 'shield') icon = scene.add.rectangle(pos.x, pos.y, Math.max(8, Math.round(item.size?.width || 12)), Math.max(10, Math.round(item.size?.height || 16)), item.color || 0xaaaaaa);
       else icon = scene.add.rectangle(pos.x, pos.y, 10, 10, 0xaaaaaa);
       icon.setDepth(413);
-      const label = scene.add.text(pos.x, pos.y + (m.slotH/2) - 9, item.name || 'Item', { fontSize: '8px', color: isEquipped ? '#00ff00' : '#ffffff', align: 'center', wordWrap: { width: m.slotW - 4 } }).setOrigin(0.5, 1).setDepth(413);
+      // Note: icons are intentionally allowed to overlap their own slot area (e.g., Rusty Dagger) but will be clamped to the grid band below tabs
+      const label = scene.add.text(pos.x, pos.y + (m.slotH/2) - 9, item.name || 'Item', { fontSize: '8px', color: isEquipped ? '#00ff00' : '#ffffff', align: 'center', wordWrap: { width: m.slotW - 6 } }).setOrigin(0.5, 1).setDepth(413);
+      // Ensure label fits inside slot
+      truncateTextToFit(label, m.slotW - 8, 2);
       scene._invItemNodes.push(icon, label);
       // Equipped tint
       slot.setFillStyle(isEquipped ? 0x004400 : 0x333333, isEquipped ? 0.8 : 0.7);
@@ -276,12 +301,40 @@ function refreshInventoryGrid(scene) {
       scene._invItemNodes.push(label);
     }
   }
+  // After creating grid nodes, avoid overlaps and clamp to content
+  const modal = scene.inventoryModal;
+  const allNodes = [...scene._invSlotNodes, ...scene._invItemNodes];
+  // Do not globally avoidOverlaps for grid nodes: keep them fixed in their row/slot to avoid creeping into the tabs.
+  // Clamp each node to the modal content and to the grid vertical band.
+  allNodes.forEach(n => {
+    clampNodeToContent(n, modal, 2);
+    clampNodeToVerticalBand(n, modal, scene._invSections?.grid);
+  });
 
   // Highlight
   if (count > 0) {
     const pos = slotPosition(m, scene._invHover);
     scene._invHighlight = scene.add.rectangle(pos.x, pos.y, m.slotW + 4, m.slotH + 4).setStrokeStyle(2, 0xffff66).setDepth(414);
+    clampNodeToContent(scene._invHighlight, scene.inventoryModal, 2);
+    clampNodeToVerticalBand(scene._invHighlight, scene.inventoryModal, scene._invSections?.grid);
   }
+}
+
+// Helper: constrain a node vertically to a given band { top, bottom } within modal content
+function clampNodeToVerticalBand(node, modal, band) {
+  if (!band) return;
+  const pad = 2;
+  const minY = Math.max(modal.content.top + pad, band.top);
+  const maxY = Math.min(modal.content.bottom - pad, band.bottom);
+  // Approximate bounds
+  const h = (node.height ?? node.displayHeight ?? 0);
+  const oy = (typeof node.originY === 'number') ? node.originY : (typeof node.displayOriginY === 'number' ? (node.displayOriginY / (h || 1)) : 0.5);
+  const top = node.y - h * oy;
+  const bottom = top + h;
+  let ny = node.y;
+  if (top < minY) ny += (minY - top);
+  if (bottom > maxY) ny -= (bottom - maxY);
+  if (ny !== node.y) node.setY(ny);
 }
 
 function attachInventoryKeyHandlers(scene) {
@@ -337,7 +390,13 @@ function moveHover(scene, dx, dy) {
   if (c < 0) c = 0; if (c > rowCount - 1) c = rowCount - 1;
   scene._invHover = Math.min(lastIdx, r * m.cols + c);
   // move highlight
-  if (scene._invHighlight) { const pos = slotPosition(m, scene._invHover); scene._invHighlight.setPosition(pos.x, pos.y); }
+  if (scene._invHighlight) {
+    const pos = slotPosition(m, scene._invHover);
+    scene._invHighlight.setPosition(pos.x, pos.y);
+    // keep highlight inside content and the grid vertical band
+    clampNodeToContent(scene._invHighlight, scene.inventoryModal, 2);
+    clampNodeToVerticalBand(scene._invHighlight, scene.inventoryModal, scene._invSections?.grid);
+  }
 }
 
 // --- Submenu (Inspect/Equip/Drop or Use) ---
@@ -362,6 +421,15 @@ function openSubmenu(scene) {
   }
   scene._invMenu = { bg, nodes, labels, options, selected, idx };
   scene._invMenuOpen = true;
+  // Clamp submenu inside modal and avoid overlapping the highlight excessively
+  clampNodeToContent(bg, scene.inventoryModal, 2);
+  clampNodeToVerticalBand(bg, scene.inventoryModal, scene._invSections?.grid);
+  // If bg moved due to clamping, shift labels along with it so the menu stays cohesive
+  const dy = bg.y - y;
+  if (Math.abs(dy) > 0.01) {
+    labels.forEach(t => t.setY(t.y + dy));
+  }
+  avoidOverlaps([bg, scene._invHighlight].filter(Boolean), scene.inventoryModal, 2);
 }
 
 function closeSubmenu(scene) {
@@ -432,6 +500,8 @@ function openInspectPanel(scene, item) {
   const desc = scene.add.text(x, y - h/2 + 24, getItemDescription(item), { fontSize: '10px', color: '#ffffff', align: 'center', wordWrap: { width: w - 12 } }).setOrigin(0.5, 0).setDepth(431);
   const hint = scene.add.text(x, y + h/2 - 6, 'C/ESC to close', { fontSize: '9px', color: '#cccccc' }).setOrigin(0.5, 1).setDepth(431);
   scene._invInspectNodes = [bg, title, desc, hint];
+  // Clamp inspect panel within modal
+  [bg, title, desc, hint].forEach(n => clampNodeToContent(n, scene.inventoryModal, 2));
   // Temp key trap: close on C or ESC
   const closer = (e) => {
     if (e.code === 'KeyC' || e.code === 'Escape' || e.code === 'Enter' || e.code === 'Space') {

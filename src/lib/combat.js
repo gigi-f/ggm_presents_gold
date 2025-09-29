@@ -36,7 +36,8 @@ export function swingMeleeWeapon(scene) {
   }
 
   if (!scene.meleeWeaponSprite) {
-    scene.meleeWeaponSprite = scene.add.rectangle(scene.player.x, scene.player.y - 15, weaponSize.width, weaponSize.height, weaponColor);
+    // Create sprite anchored at inner edge (origin.x = 0) so it can pivot from the player's edge
+    scene.meleeWeaponSprite = scene.add.rectangle(scene.player.x, scene.player.y, weaponSize.width, weaponSize.height, weaponColor);
     scene.meleeWeaponSprite.setOrigin(0, 0.5);
     scene.meleeWeaponSprite.setDepth(2);
   } else {
@@ -45,8 +46,8 @@ export function swingMeleeWeapon(scene) {
   }
 
   scene.meleeWeaponSprite.setVisible(true);
-  scene.meleeWeaponSprite.x = scene.player.x;
-  scene.meleeWeaponSprite.y = scene.player.y;
+  // Position the weapon's inner edge at the player's edge in the facing direction
+  positionWeaponAtPlayerEdge(scene);
 
   let startAngle = -45, endAngle = 45;
   if (scene.lastDirection === 'left') { startAngle = -135; endAngle = -225; }
@@ -103,8 +104,13 @@ export function swingMeleeWeapon(scene) {
       const diff = Phaser.Math.Angle.WrapDegrees(enemyAngle - dirAngle);
       if (Math.abs(diff) <= 60) {
         // Use the current weapon sprite position as hit origin (approx.) for knockback direction
-        const hitX = scene.meleeWeaponSprite?.x ?? scene.player.x;
-        const hitY = scene.meleeWeaponSprite?.y ?? scene.player.y;
+        // Use the current weapon inner edge or approximate tip for knockback direction
+        const wx = scene.meleeWeaponSprite?.x ?? scene.player.x;
+        const wy = scene.meleeWeaponSprite?.y ?? scene.player.y;
+        const angle = scene.meleeWeaponSprite?.rotation ?? 0;
+        const reach = weaponSize.width || 20;
+        const hitX = wx + Math.cos(angle) * reach;
+        const hitY = wy + Math.sin(angle) * reach;
         damageEnemy(scene, enemy, baseDamage, { source: 'melee', cooldownMs: 140, knockback: 140, stunMs: 160, hitX, hitY });
       }
     });
@@ -115,8 +121,29 @@ export function swingMeleeWeapon(scene) {
 
 export function updateMeleeWeaponPosition(scene) {
   if (!scene.meleeWeaponSprite || !scene.meleeWeaponSwinging) return;
-  scene.meleeWeaponSprite.x = scene.player.x;
-  scene.meleeWeaponSprite.y = scene.player.y;
+  // Keep the inner edge anchored at the player's edge while swinging
+  positionWeaponAtPlayerEdge(scene);
+}
+
+// Helper: compute facing vector and anchor the weapon's inner edge at the player's edge
+function positionWeaponAtPlayerEdge(scene) {
+  const player = scene.player;
+  if (!player) return;
+  const body = player.body || {};
+  const halfW = ((body.width ?? player.displayWidth ?? 16) / 2) | 0;
+  const halfH = ((body.height ?? player.displayHeight ?? 16) / 2) | 0;
+  const gap = 2; // small separation so weapon doesn't overlap the sprite
+  let nx = 1, ny = 0;
+  switch (scene.lastDirection) {
+    case 'left': nx = -1; ny = 0; break;
+    case 'up': nx = 0; ny = -1; break;
+    case 'down': nx = 0; ny = 1; break;
+    default: nx = 1; ny = 0; // right
+  }
+  const offset = (nx !== 0) ? (halfW + gap) : (halfH + gap);
+  const ax = player.x + nx * offset;
+  const ay = player.y + ny * offset;
+  scene.meleeWeaponSprite.setPosition(ax, ay);
 }
 
 export function raiseShield(scene) {

@@ -93,3 +93,71 @@ export const UI = {
   anyOpen() { return this._open.size > 0; },
   names() { return Array.from(this._open.values()); }
 };
+
+// -------- Layout helpers: bounds, clamping, overlap avoidance, truncation --------
+
+// Compute axis-aligned bounds for a Phaser GameObject (approximate using width/height and origin)
+export function getNodeBounds(node) {
+  const w = (node.width ?? node.displayWidth ?? 0);
+  const h = (node.height ?? node.displayHeight ?? 0);
+  const ox = (typeof node.originX === 'number') ? node.originX : (typeof node.displayOriginX === 'number' ? (node.displayOriginX / (w || 1)) : 0.5);
+  const oy = (typeof node.originY === 'number') ? node.originY : (typeof node.displayOriginY === 'number' ? (node.displayOriginY / (h || 1)) : 0.5);
+  const left = node.x - w * ox;
+  const top = node.y - h * oy;
+  return { left, top, right: left + w, bottom: top + h, width: w, height: h, centerX: node.x, centerY: node.y };
+}
+
+export function clampNodeToContent(node, modal, pad = 0) {
+  const b = getNodeBounds(node);
+  const minX = modal.content.left + pad;
+  const maxX = modal.content.right - pad;
+  const minY = modal.content.top + pad;
+  const maxY = modal.content.bottom - pad;
+  let nx = node.x, ny = node.y;
+  if (b.left < minX) nx += (minX - b.left);
+  if (b.right > maxX) nx -= (b.right - maxX);
+  if (b.top < minY) ny += (minY - b.top);
+  if (b.bottom > maxY) ny -= (b.bottom - maxY);
+  if (nx !== node.x || ny !== node.y) node.setPosition(nx, ny);
+}
+
+// Move later nodes down minimally to resolve pairwise overlaps (greedy), then clamp to content
+export function avoidOverlaps(nodes, modal, pad = 2) {
+  const list = nodes.filter(Boolean);
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const a = list[i], b = list[j];
+      const A = getNodeBounds(a), B = getNodeBounds(b);
+      const overlap = !(A.right + pad <= B.left || B.right + pad <= A.left || A.bottom + pad <= B.top || B.bottom + pad <= A.top);
+      if (overlap) {
+        // Push b down by minimal amount
+        const dy = (A.bottom + pad) - B.top;
+        b.setY(b.y + dy);
+        clampNodeToContent(b, modal, pad);
+      }
+    }
+    clampNodeToContent(list[i], modal, pad);
+  }
+}
+
+// Truncate text with ellipsis until it fits within maxWidth and maxLines (approximate)
+export function truncateTextToFit(textObj, maxWidth, maxLines = 2) {
+  if (!textObj || typeof textObj.text !== 'string') return;
+  const original = textObj.text;
+  let s = original;
+  const lineHeight = textObj.height || 0; // Phaser doesn't expose lineHeight directly without a style measurement
+  const maxH = (textObj.style?.fontSize ? parseInt(textObj.style.fontSize) : 10) * maxLines * 1.3; // rough cap
+  const fits = () => (textObj.width <= maxWidth + 0.5) && (textObj.height <= maxH + 0.5);
+  // Fast path: if already fits, keep
+  if (fits()) return;
+  // Iteratively shrink
+  let cut = s.length;
+  while (cut > 1) {
+    cut = Math.max(1, Math.floor(cut * 0.9));
+    s = original.slice(0, cut) + '…';
+    textObj.setText(s);
+    if (fits()) return;
+  }
+  // As a last resort, empty to avoid overlap
+  textObj.setText(original.slice(0, 1) + '…');
+}
