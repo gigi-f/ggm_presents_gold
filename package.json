@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite",
     "validate:ai": "node scripts/validate-ai-index.mjs",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "phaser": "^3.80.0"

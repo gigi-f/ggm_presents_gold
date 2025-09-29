@@ -1,3 +1,9 @@
+/*
+ AI-INDEX
+ - Tags: engine.constants
+ - See: docs/ai/index.json
+*/
+
 export const SCENES = {
   MAIN: 'MainScene',
   UI: 'UIScene',
@@ -35,3 +41,21 @@ export const DIRECTIONS = {
 export type SceneKey = typeof SCENES[keyof typeof SCENES];
 export type MapId = typeof MAP_IDS[keyof typeof MAP_IDS];
 export type DoorId = typeof DOOR_IDS[keyof typeof DOOR_IDS];
+export type Direction = typeof DIRECTIONS[keyof typeof DIRECTIONS];
+
+// Export to window for non-module usage (optional in browsers)
+declare global {
+  interface Window {
+    SCENES: typeof SCENES;
+    MAP_IDS: typeof MAP_IDS;
+    DOOR_IDS: typeof DOOR_IDS;
+    DIRECTIONS: typeof DIRECTIONS;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.SCENES = SCENES;
+  window.MAP_IDS = MAP_IDS;
+  window.DOOR_IDS = DOOR_IDS;
+  window.DIRECTIONS = DIRECTIONS;
+}
