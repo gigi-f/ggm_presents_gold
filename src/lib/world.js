@@ -17,6 +17,8 @@ export function initializeGrid(scene) {
   scene.occupiedCells = new Set();
   scene.gridVisible = false;
   scene.gridLines = null;
+  // Terrain zones (non-blocking floor effects)
+  scene.terrainZones = scene.add ? scene.add.group() : null;
 }
 
 // Legacy helper retained for compatibility; prefer computeEdgeOpenRanges
@@ -373,6 +375,9 @@ export function createMapObjects(scene, options = {}) {
   if (!scene.treeTrunks) scene.treeTrunks = scene.add.group();
   if (!scene.buildingWalls) scene.buildingWalls = scene.add.group();
   if (!scene.enemiesGroup) scene.enemiesGroup = scene.add.group();
+  if (!scene.terrainZones) scene.terrainZones = scene.add.group();
+  // Clear prior terrain zones
+  if (scene.terrainZones) scene.terrainZones.clear(true, true);
   // Clear previous building wall colliders to avoid stale collision blocking
   if (scene.buildingWalls) {
     scene.buildingWalls.clear(true, true);
@@ -628,10 +633,123 @@ export function createMapObjects(scene, options = {}) {
   if (scene.silverIngot1) scene.physics.add.overlap(scene.player, scene.silverIngot1, scene.pickupCurrency, null, scene);
   if (scene.goldIngot1) scene.physics.add.overlap(scene.player, scene.goldIngot1, scene.pickupGoldIngot, null, scene);
 
+  // Terrain zones: overlap to apply slow effect briefly; keep renewing while overlapping
+  if (scene.terrainZones) {
+    // Clear any prior overlap handlers by recreating overlaps each build
+    const applySlow = (player, zone) => {
+      const f = Number.isFinite(zone.slowFactor) ? zone.slowFactor : 0.8;
+      scene._terrainSlowFactor = Math.min(scene._terrainSlowFactor || 1, f);
+      scene._terrainSlowUntil = scene.time.now + 100; // refresh for 100ms; renewed every frame if still overlapping
+    };
+    scene.physics.add.overlap(scene.player, scene.terrainZones, applySlow, null, scene);
+  }
+
   // Generate biome-specific props and enemies after core map scaffolding
   try { generateBiomeContent(scene); } catch (e) { console.warn('Biome generation failed:', e); }
 
   if (scene.gridVisible) createGridVisualization(scene);
+}
+
+// Create a non-blocking terrain zone (e.g., marsh, quicksand) covering a rectangle of grid cells.
+// Does not mark cells as occupied to allow other placements; purely visual + overlap effect.
+export function createTerrainZone(scene, startGX, startGY, wTiles, hTiles, type = 'marsh', opts = {}) {
+  const cs = scene.gridCellSize;
+  const center = gridToWorld(scene, startGX, startGY);
+  const width = wTiles * cs;
+  const height = hTiles * cs;
+  const cx = center.x + (wTiles - 1) * cs / 2;
+  const cy = center.y + (hTiles - 1) * cs / 2;
+  // Visual style per type
+  const styles = {
+    marsh: { color: 0x3a6b5a, alpha: 0.35, stroke: 0x88d3b0, slowFactor: 0.9 },
+    quicksand: { color: 0xD2B48C, alpha: 0.4, stroke: 0x8b6f47, slowFactor: 0.5 },
+  };
+  const st = { ...(styles[type] || styles.marsh), ...(opts.style || {}) };
+  // Default: build rectangular footprint of cells
+  const cells = [];
+  for (let dx = 0; dx < wTiles; dx++) {
+    for (let dy = 0; dy < hTiles; dy++) {
+      cells.push({ gx: startGX + dx, gy: startGY + dy });
+    }
+  }
+  return createTerrainZoneFromCells(scene, cells, type, { ...opts, style: st });
+}
+
+// Create terrain zone from a list of grid cells. Adds one physics rectangle per cell (overlap sensor)
+// and draws a pattern overlay for visual texture.
+export function createTerrainZoneFromCells(scene, cells, type = 'marsh', opts = {}) {
+  if (!Array.isArray(cells) || cells.length === 0) return null;
+  const cs = scene.gridCellSize;
+  // Visual style
+  const baseStyles = {
+    marsh: { color: 0x3a6b5a, alpha: 0.35, stroke: 0x88d3b0, slowFactor: 0.9 },
+    quicksand: { color: 0xD2B48C, alpha: 0.4, stroke: 0x8b6f47, slowFactor: 0.5 },
+  };
+  const st = { ...(baseStyles[type] || baseStyles.marsh), ...(opts.style || {}) };
+  const slowFactor = Number.isFinite(opts.slowFactor) ? opts.slowFactor : st.slowFactor;
+  const rand = typeof opts.rand === 'function' ? opts.rand : Math.random;
+
+  // Optional container just to help z-ordering and grouping visuals
+  const container = scene.add.container(0, 0);
+  container.setDepth(0);
+  if (scene.worldLayer) scene.worldLayer.add(container);
+
+  // Draw cells and physics
+  const tileRects = [];
+  for (const { gx, gy } of cells) {
+    const { x, y } = gridToWorld(scene, gx, gy);
+    const r = scene.add.rectangle(x, y, cs, cs, st.color, st.alpha).setDepth(0);
+    scene.physics.add.existing(r);
+    r.body.setImmovable(true);
+    r.terrainType = type;
+    r.slowFactor = slowFactor;
+    r.gx = gx; r.gy = gy;
+    container.add(r);
+    if (scene.terrainZones) scene.terrainZones.add(r);
+    tileRects.push(r);
+  }
+
+  // Pattern overlay: single Graphics for all cells in this zone
+  const g = scene.add.graphics();
+  g.setDepth(0);
+  const drawMarshLines = (baseX, baseY) => {
+    const lines = 2 + Math.floor(rand() * 2); // 2-3
+    const pad = 3;
+    g.lineStyle(1, 0x9fd3c0, 0.7);
+    for (let i = 0; i < lines; i++) {
+      const y = baseY - cs/2 + pad + (i+1) * ((cs - pad*2) / (lines + 1));
+      const wiggle = (rand() - 0.5) * 4;
+      g.beginPath();
+      g.moveTo(baseX - cs/2 + pad, y + wiggle);
+      g.lineTo(baseX + cs/2 - pad, y - wiggle);
+      g.strokePath();
+    }
+  };
+  const drawQuicksandDots = (baseX, baseY) => {
+    // Draw small square blocks for a more grainy, blocky quicksand look
+    const blocks = 4 + Math.floor(rand() * 3); // 4-6
+    for (let i = 0; i < blocks; i++) {
+      const rx = (rand() - 0.5) * (cs - 6);
+      const ry = (rand() - 0.5) * (cs - 6);
+      const s = 2 + Math.floor(rand() * 3); // 2..4 px square
+      g.fillStyle(0xf7ca8d, 0.9);
+      g.fillRect(Math.round(baseX + rx - s / 2), Math.round(baseY + ry - s / 2), s, s);
+    }
+  };
+  // Draw per tile
+  for (const r of tileRects) {
+    if (type === 'marsh') drawMarshLines(r.x, r.y);
+    else if (type === 'quicksand') drawQuicksandDots(r.x, r.y);
+  }
+  // Attach pattern graphics to the zone container
+  container.add(g);
+  container.pattern = g;
+  container.tiles = tileRects;
+  // Ensure the entire terrain zone (tiles + pattern) is beneath obstacles/maze
+  if (scene.worldLayer) {
+    try { scene.worldLayer.sendToBack(container); } catch (e) { /* noop */ }
+  }
+  return container;
 }
 
 // Return a Set of "gx,gy" strings for all edge entrance cells (north/south/east/west) on the current map.

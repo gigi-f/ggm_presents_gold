@@ -13,8 +13,9 @@ export function ensureWolfTexture(scene, key = 'wolf') {
   const g = scene.add.graphics();
   g.clear();
 
-  const fur = 0x565656;
-  const dark = 0x3c3c3c;
+  // Brown wolf palette
+  const fur = 0x8b5a2b;   // mid brown
+  const dark = 0x5a3b2e;  // darker brown for shading/tail/legs
   const eye = 0xffe070;
   const nose = 0x222222;
 
@@ -27,7 +28,8 @@ export function ensureWolfTexture(scene, key = 'wolf') {
 
   // Head
   g.fillStyle(fur, 1);
-  g.fillEllipse(20, 8, 7, 6);
+  // Slightly wider head to support a longer snout
+  g.fillEllipse(20, 8, 8, 6);
 
   // Ears
   g.beginPath();
@@ -35,25 +37,32 @@ export function ensureWolfTexture(scene, key = 'wolf') {
   g.beginPath();
   g.moveTo(21.5, 3); g.lineTo(22.5, 1); g.lineTo(23, 3.3); g.closePath(); g.fillPath();
 
-  // Tail
+  // Tail (thicker)
   g.fillStyle(dark, 1);
+  // Wider triangular sweep toward the back
   g.beginPath();
-  g.moveTo(3, 9);
-  g.lineTo(0.5, 7.5);
-  g.lineTo(1.5, 10.5);
+  g.moveTo(5, 9);
+  g.lineTo(1, 6);
+  g.lineTo(2, 12);
   g.closePath();
   g.fillPath();
+  // Thicken tail base near body
+  g.fillEllipse(7, 9, 6, 4);
 
   // Legs (subtle)
   g.fillStyle(dark, 1);
   g.fillRect(8, 12, 2, 2);
   g.fillRect(14, 12, 2, 2);
 
-  // Eye and nose
+  // Eye and snout/nose
   g.fillStyle(eye, 1);
   g.fillRect(21, 7, 1, 1);
+  // Extend snout forward
+  g.fillStyle(fur, 1);
+  g.fillRect(22, 8, 3, 2);
+  // Nose at the tip
   g.fillStyle(nose, 1);
-  g.fillRect(23, 8, 1, 1);
+  g.fillRect(25, 9, 1, 1);
 
   const rt = scene.make.renderTexture({ x: 0, y: 0, width: w, height: h, add: false });
   rt.draw(g, 0, 0);

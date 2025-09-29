@@ -766,7 +766,11 @@ export class MainScene extends Phaser.Scene {
       if (!knockbackActive) {
         let velocityX = 0;
         let velocityY = 0;
-        const speed = 100;
+        // Base speed modified by terrain zones
+        let speed = 100;
+        if (this._terrainSlowUntil && (this.time.now <= this._terrainSlowUntil)) {
+          speed = Math.floor((this._terrainSlowFactor || 1) * speed);
+        }
 
         if (this.keys.left.isDown) {
           velocityX = -speed;
@@ -966,25 +970,45 @@ export class MainScene extends Phaser.Scene {
       const modal = createModal(this, { coverHUD: true, depthBase: 620, outerMargin: 10, padTop: 20, padBottom: 18 });
       const title = addTitle(this, modal, 'World Map', { fontSize: '14px', color: '#ffffff' });
       const hint = this.add.text(modal.center.x, modal.content.bottom, 'O to close', { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5, 1).setDepth(623);
-      // Compute grid bounds
-      const layouts = Object.entries(this.worldMapLayout);
+      // Compute grid bounds (exclude shop tiles from overworld map)
+      const layouts = Object.entries(this.worldMapLayout).filter(([, v]) => v.type !== 'shop');
+      // If nothing to draw, just build empty container with modal
+      if (layouts.length === 0) {
+        this.worldMapContainer = this.add.container(0, 0, [modal.backdrop, modal.panel, title, hint]).setDepth(620);
+        this.worldMapContainer.setScrollFactor(0);
+        this.worldMapContainer.modal = modal;
+        return;
+      }
       const minGX = Math.min(...layouts.map(([, v]) => v.gx));
       const maxGX = Math.max(...layouts.map(([, v]) => v.gx));
       const minGY = Math.min(...layouts.map(([, v]) => v.gy));
       const maxGY = Math.max(...layouts.map(([, v]) => v.gy));
       const cols = (maxGX - minGX + 1) || 1;
       const rows = (maxGY - minGY + 1) || 1;
-      // Tile size fit into modal content
+      // Tile size fit into modal content, reserving space for title and bottom hint,
+      // but also small enough to eventually fit 64x64 tiles
+      const titleH = Math.ceil(title?.height || 0);
+      const hintH = Math.ceil(hint?.height || 0);
       const availW = modal.content.width();
-      const availH = modal.content.height();
-      const gap = 4;
+      const availableTop = modal.content.top + titleH + 6;
+      const availableBottom = modal.content.bottom - hintH - 6;
+      const availH = Math.max(0, availableBottom - availableTop);
+      const gap = 1; // tighter gap to allow dense grids
+      // Size based on current extents
       const tileW = Math.floor((availW - gap * (cols - 1)) / cols);
       const tileH = Math.floor((availH - gap * (rows - 1)) / rows);
-      const tileSize = Math.max(16, Math.min(tileW, tileH));
+      const layoutTile = Math.floor(Math.min(tileW, tileH));
+      // Size required if the map grows to 64x64
+      const targetCols = 64;
+      const targetRows = 64;
+      const tileW64 = Math.floor((availW - gap * (targetCols - 1)) / targetCols);
+      const tileH64 = Math.floor((availH - gap * (targetRows - 1)) / targetRows);
+      const capTile = Math.floor(Math.min(tileW64, tileH64));
+      const tileSize = Math.max(3, Math.min(layoutTile, capTile));
       const gridW = cols * tileSize + (cols - 1) * gap;
       const gridH = rows * tileSize + (rows - 1) * gap;
-      const startX = modal.center.x - gridW / 2;
-      const startY = modal.center.y - gridH / 2 + 6; // slight bias down from title
+      const startX = modal.content.left + Math.floor((availW - gridW) / 2);
+      const startY = availableTop + Math.floor((availH - gridH) / 2);
       // Draw tiles
       const cont = this.add.container(0, 0).setDepth(622);
       cont.setScrollFactor(0);
@@ -997,12 +1021,22 @@ export class MainScene extends Phaser.Scene {
   const color = this.maps[mapId]?.color ?? ((this.maps[mapId]?.type === 'shop') ? 0x5a3b2e : 0x228be6);
         const fillAlpha = visited ? 0.95 : 0.08;
         const stroke = visited ? 0xffffff : 0x777777;
-        const r = this.add.rectangle(x, y, tileSize, tileSize, color, fillAlpha).setStrokeStyle(isCurrent ? 2 : 1, isCurrent ? 0xffff00 : stroke).setDepth(622).setScrollFactor(0);
+        const strokeW = isCurrent ? Math.max(1, Math.floor(tileSize / 8)) : 1;
+        const r = this.add.rectangle(x, y, tileSize, tileSize, color, fillAlpha).setStrokeStyle(strokeW, isCurrent ? 0xffff00 : stroke).setDepth(622).setScrollFactor(0);
         cont.add(r);
         if (visited) {
-          // Label (small)
-          const label = this.add.text(x, y, this.maps[mapId]?.type === 'shop' ? 'Shop' : 'Overworld', { fontSize: '8px', color: '#ffffff' }).setOrigin(0.5).setDepth(623).setScrollFactor(0);
-          cont.add(label);
+          // Label only when tiles are reasonably large; abbreviate for tiny tiles
+          if (tileSize >= 14) {
+            const labelText = this.maps[mapId]?.type === 'shop' ? '' : 'Overworld';
+            const fs = Math.max(8, Math.floor(tileSize * 0.5));
+            const label = this.add.text(x, y, labelText, { fontSize: `${fs}px`, color: '#ffffff' }).setOrigin(0.5).setDepth(623).setScrollFactor(0);
+            cont.add(label);
+          } else if (tileSize >= 8) {
+            const labelText = this.maps[mapId]?.type === 'shop' ? '' : 'O';
+            const fs = Math.max(6, Math.floor(tileSize * 0.6));
+            const label = this.add.text(x, y, labelText, { fontSize: `${fs}px`, color: '#ffffff' }).setOrigin(0.5).setDepth(623).setScrollFactor(0);
+            cont.add(label);
+          }
         }
       });
       this.worldMapContainer = this.add.container(0, 0, [modal.backdrop, modal.panel, title, hint, cont]).setDepth(620);

@@ -570,3 +570,4 @@ export function spawnWolfAtGrid(scene, gridX, gridY, opts = {}) {
   const { x, y } = scene.gridToWorld(gridX, gridY);
   return createEnemy(scene, 'wolf', x, y, { homeX: x, homeY: y, ...opts });
 }
+

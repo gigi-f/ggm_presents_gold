@@ -6,6 +6,46 @@
 import { SCENES } from './constants';
 import { createModal, addTitle, UI } from './ui.js';
 
+// --- Helpers: categorization and descriptions ---
+function categorizeItem(item) {
+  if (!item) return 'other';
+  if (item.type === 'weapon') return 'weapons';
+  if (item.type === 'shield') return 'shields';
+  if (item.type === 'consumable') return 'potions';
+  return 'other';
+}
+
+const TAB_ORDER = ['weapons', 'shields', 'potions', 'other'];
+const TAB_LABELS = { weapons: 'Weapons', shields: 'Shields', potions: 'Potions', other: 'Other' };
+
+function getItemDescription(item) {
+  if (!item) return 'Unknown item.';
+  if (item.type === 'weapon') {
+    const base = {
+      starter: 'A rusty starter dagger. Weak but reliable.',
+      basic: 'A basic melee weapon. Balanced for general use.',
+      strong: 'A heavy weapon that deals strong hits but is slower.',
+      fast: 'A light weapon that swings quickly but for less damage.'
+    };
+    return base[item.subtype] || `A ${item.subtype || 'melee'} weapon.`;
+  }
+  if (item.type === 'shield') {
+    const base = {
+      basic: 'A basic wooden shield. Modest protection.',
+      strong: 'A sturdy metal shield. High protection, heavier.',
+      light: 'A light buckler. Quicker to raise, less protection.'
+    };
+    return base[item.subtype] || `A ${item.subtype || 'basic'} shield.`;
+  }
+  if (item.type === 'consumable') {
+    const parts = [];
+    if (item.healAmount) parts.push(`Restores ${item.healAmount} HP`);
+    if (item.staminaAmount) parts.push(`Restores ${item.staminaAmount} Stamina`);
+    return (item.description) || (parts.length ? parts.join(' and ') + '.' : 'A consumable item.');
+  }
+  return item.description || 'An item.';
+}
+
 export function addToInventory(scene, item) {
   if (scene.inventoryItems.length >= scene.maxInventorySize) return false;
   scene.inventoryItems.push(item);
@@ -68,36 +108,34 @@ export function toggleInventory(scene) {
 
 export function showInventory(scene) {
   if (!scene.inventoryPanel) {
+    // Modal
     const modal = createModal(scene, { coverHUD: false, depthBase: 400 });
+    scene.inventoryModal = modal;
     scene.inventoryBackdrop = modal.backdrop;
     scene.inventoryPanel = modal.panel;
     scene.inventoryTitle = addTitle(scene, modal, 'INVENTORY', { fontSize: '16px', color: '#ffffff' });
-    scene.inventorySlots = [];
-    scene.inventorySlotTexts = [];
-    const cols = 4;
-    const slotSize = { w: 35, h: 35 };
-    const gutter = 8;
-    const startX = modal.content.left + 10;
-    const startY = modal.content.top + 28;
-    for (let i = 0; i < scene.maxInventorySize; i++) {
-      const row = Math.floor(i / cols);
-      const col = i % cols;
-      const x = startX + col * (slotSize.w + gutter);
-      const y = startY + row * (slotSize.h + gutter + 10);
-      const slot = scene.add.rectangle(x, y, slotSize.w, slotSize.h, 0x666666);
-      slot.setDepth(411);
-      scene.inventorySlots.push(slot);
-      const slotNumber = scene.add.text(x - slotSize.w/2 + 2, y - slotSize.h/2 + 2, `${i + 1}`, { fontSize: '10px', fill: '#ffffff' });
-      slotNumber.setDepth(412);
-      scene.inventorySlotTexts.push(slotNumber);
-    }
+
+    // Tabs
+    scene._invTabs = [];
+    scene._invActiveTab = scene._invActiveTab || 'weapons';
+    renderTabs(scene);
+
+    // Grid containers
+    scene._invSlotNodes = [];
+    scene._invItemNodes = [];
+    scene._invHighlight = null;
+
+    // Input handling
+    attachInventoryKeyHandlers(scene);
   }
-  updateInventoryDisplay(scene);
+  // Refresh grid for current tab
+  refreshInventoryGrid(scene);
+  // Show UI
   if (scene.inventoryBackdrop) scene.inventoryBackdrop.setVisible(true);
   scene.inventoryPanel.setVisible(true);
   scene.inventoryTitle.setVisible(true);
-  scene.inventorySlots.forEach(slot => slot.setVisible(true));
-  scene.inventorySlotTexts.forEach(text => text.setVisible(true));
+  setTabsVisibility(scene, true);
+  setGridVisibility(scene, true);
   UI.open('inventory');
 }
 
@@ -106,44 +144,16 @@ export function hideInventory(scene) {
   if (scene.inventoryBackdrop) scene.inventoryBackdrop.setVisible(false);
   scene.inventoryPanel.setVisible(false);
   scene.inventoryTitle.setVisible(false);
-  scene.inventorySlots.forEach(slot => slot.setVisible(false));
-  scene.inventorySlotTexts.forEach(text => text.setVisible(false));
-  if (scene.inventoryItemDisplays) {
-    scene.inventoryItemDisplays.forEach(display => { if (display.sprite) display.sprite.setVisible(false); if (display.text) display.text.setVisible(false); });
-  }
-  if (scene.equipmentDisplays) {
-    scene.equipmentDisplays.forEach(display => { if (display.sprite) display.sprite.setVisible(false); if (display.text) display.text.setVisible(false); });
-  }
+  setTabsVisibility(scene, false);
+  setGridVisibility(scene, false);
+  closeSubmenu(scene);
+  detachInventoryKeyHandlers(scene);
   UI.close('inventory');
 }
 
 export function updateInventoryDisplay(scene) {
-  if (scene.inventoryItemDisplays) {
-    scene.inventoryItemDisplays.forEach(display => { if (display.sprite) display.sprite.destroy(); if (display.text) display.text.destroy(); });
-  }
-  if (scene.equipmentDisplays) {
-    scene.equipmentDisplays.forEach(display => { if (display.sprite) display.sprite.destroy(); if (display.text) display.text.destroy(); });
-  }
-  scene.inventoryItemDisplays = [];
-  scene.equipmentDisplays = [];
-  for (let i = 0; i < Math.min(scene.maxInventorySize, scene.inventoryItems.length); i++) {
-    const item = scene.inventoryItems[i];
-    const row = Math.floor(i / 4);
-    const col = i % 4;
-    const x = 80 + (col * 40);
-    const y = 100 + (row * 45);
-    const isEquipped = (scene.equippedWeapon && scene.equippedWeapon === item) || (scene.equippedShield && scene.equippedShield === item);
-    if (isEquipped) scene.inventorySlots[i].setFillStyle(0x00FF00, 0.3);
-    else scene.inventorySlots[i].setFillStyle(0x666666);
-    let itemSprite;
-    if (item.type === 'weapon') itemSprite = scene.add.rectangle(x, y, item.size.width / 2, item.size.height * 2, item.color);
-    else if (item.type === 'shield') itemSprite = scene.add.rectangle(x, y, item.size.width, item.size.height, item.color);
-    itemSprite.setDepth(12);
-    const itemText = scene.add.text(x, y + 25, item.name, { fontSize: '8px', fill: isEquipped ? '#00FF00' : '#ffffff', align: 'center', wordWrap: { width: 35 } });
-    itemText.setOrigin(0.5);
-    itemText.setDepth(12);
-    scene.inventoryItemDisplays.push({ sprite: itemSprite, text: itemText });
-  }
+  // Back-compat alias: rerender current grid
+  refreshInventoryGrid(scene);
 }
 
 export function updateEquipmentHUD(scene) {
@@ -164,4 +174,271 @@ export function equipDefaultWeapon(scene) {
   addToInventory(scene, defaultWeapon);
   equipWeapon(scene, defaultWeapon);
   console.log('Equipped default starter weapon: Rusty Dagger');
+}
+
+// ----------------- New UI internals -----------------
+function setTabsVisibility(scene, visible) {
+  if (scene._invTabs) scene._invTabs.forEach(n => n.setVisible(visible));
+}
+
+function setGridVisibility(scene, visible) {
+  if (scene._invSlotNodes) scene._invSlotNodes.forEach(n => n.setVisible(visible));
+  if (scene._invItemNodes) scene._invItemNodes.forEach(n => n.setVisible(visible));
+  if (scene._invHighlight) scene._invHighlight.setVisible(visible);
+}
+
+function renderTabs(scene) {
+  // destroy previous
+  if (scene._invTabs) { scene._invTabs.forEach(n => { try { n.destroy(); } catch {} }); scene._invTabs = []; }
+  const modal = scene.inventoryModal;
+  const top = modal.content.top + 18;
+  let x = modal.content.left + 6;
+  TAB_ORDER.forEach((tabKey, idx) => {
+    const label = TAB_LABELS[tabKey];
+    const isActive = scene._invActiveTab === tabKey;
+    const txt = scene.add.text(x, top, label, { fontSize: '11px', color: isActive ? '#ffffaa' : '#dddddd' }).setDepth(411);
+    scene._invTabs.push(txt);
+    // underline
+    const w = txt.width; const u = scene.add.rectangle(x + w/2, top + txt.height + 2, w, 1, isActive ? 0xffffaa : 0x666666).setDepth(411);
+    scene._invTabs.push(u);
+    // click support
+    txt.setInteractive({ useHandCursor: true });
+    txt.on('pointerdown', () => { scene._invActiveTab = tabKey; refreshInventoryGrid(scene); renderTabs(scene); });
+    x += w + 14;
+  });
+  // Hint
+  const hint = scene.add.text(modal.content.right, top, 'A/D to switch tabs, arrows to move, C to select', { fontSize: '9px', color: '#aaaaaa' }).setDepth(411).setOrigin(1, 0);
+  scene._invTabs.push(hint);
+}
+
+function getFilteredIndices(scene) {
+  const tab = scene._invActiveTab || 'weapons';
+  const out = [];
+  for (let i = 0; i < scene.inventoryItems.length; i++) {
+    const it = scene.inventoryItems[i];
+    if (categorizeItem(it) === tab) out.push(i);
+  }
+  return out;
+}
+
+function gridMetrics(scene) {
+  const modal = scene.inventoryModal;
+  const cols = 4;
+  const slotW = 38, slotH = 38, gutter = 8;
+  const startX = modal.content.left + 10;
+  const startY = modal.content.top + 48; // below tabs
+  return { cols, slotW, slotH, gutter, startX, startY };
+}
+
+function slotPosition(m, idx) {
+  const row = Math.floor(idx / m.cols);
+  const col = idx % m.cols;
+  const x = m.startX + col * (m.slotW + m.gutter);
+  const y = m.startY + row * (m.slotH + m.gutter + 10);
+  return { x, y };
+}
+
+function refreshInventoryGrid(scene) {
+  // Clear old nodes
+  if (scene._invSlotNodes) { scene._invSlotNodes.forEach(n => { try { n.destroy(); } catch {} }); scene._invSlotNodes = []; }
+  if (scene._invItemNodes) { scene._invItemNodes.forEach(n => { try { n.destroy(); } catch {} }); scene._invItemNodes = []; }
+  if (scene._invHighlight) { try { scene._invHighlight.destroy(); } catch {} scene._invHighlight = null; }
+
+  // Compute items in tab
+  scene._invFiltered = getFilteredIndices(scene);
+  const count = scene._invFiltered.length;
+  const m = gridMetrics(scene);
+
+  // Ensure a valid hovered index
+  if (count === 0) scene._invHover = -1;
+  else if (scene._invHover == null || scene._invHover < 0 || scene._invHover >= count) scene._invHover = 0;
+
+  // Build slots for each item in this tab
+  for (let i = 0; i < Math.max(1, count); i++) {
+    const pos = slotPosition(m, i);
+    const slot = scene.add.rectangle(pos.x, pos.y, m.slotW, m.slotH, 0x333333, 0.7).setDepth(412);
+    scene._invSlotNodes.push(slot);
+    if (i < count) {
+      const item = scene.inventoryItems[scene._invFiltered[i]];
+      const isEquipped = (scene.equippedWeapon && scene.equippedWeapon === item) || (scene.equippedShield && scene.equippedShield === item);
+      // Icon
+      let icon;
+      if (item.type === 'weapon') icon = scene.add.rectangle(pos.x, pos.y, Math.max(6, Math.round((item.size?.width || 16)/2)), Math.max(8, Math.round((item.size?.height || 4)*2)), item.color || 0xaaaaaa);
+      else if (item.type === 'shield') icon = scene.add.rectangle(pos.x, pos.y, Math.max(8, Math.round(item.size?.width || 12)), Math.max(10, Math.round(item.size?.height || 16)), item.color || 0xaaaaaa);
+      else icon = scene.add.rectangle(pos.x, pos.y, 10, 10, 0xaaaaaa);
+      icon.setDepth(413);
+      const label = scene.add.text(pos.x, pos.y + (m.slotH/2) - 9, item.name || 'Item', { fontSize: '8px', color: isEquipped ? '#00ff00' : '#ffffff', align: 'center', wordWrap: { width: m.slotW - 4 } }).setOrigin(0.5, 1).setDepth(413);
+      scene._invItemNodes.push(icon, label);
+      // Equipped tint
+      slot.setFillStyle(isEquipped ? 0x004400 : 0x333333, isEquipped ? 0.8 : 0.7);
+    } else {
+      const label = scene.add.text(pos.x, pos.y, 'Empty', { fontSize: '8px', color: '#888888' }).setOrigin(0.5).setDepth(413);
+      scene._invItemNodes.push(label);
+    }
+  }
+
+  // Highlight
+  if (count > 0) {
+    const pos = slotPosition(m, scene._invHover);
+    scene._invHighlight = scene.add.rectangle(pos.x, pos.y, m.slotW + 4, m.slotH + 4).setStrokeStyle(2, 0xffff66).setDepth(414);
+  }
+}
+
+function attachInventoryKeyHandlers(scene) {
+  if (scene._invKeyHandler) return;
+  const handler = (e) => {
+    if (!scene.inventoryOpen) return;
+    const code = e.code;
+    // If submenu is open, route to submenu
+    if (scene._invMenuOpen) { handleSubmenuKey(scene, e); return; }
+    if (code === 'KeyA') { prevTab(scene); e.preventDefault?.(); return; }
+    if (code === 'KeyD') { nextTab(scene); e.preventDefault?.(); return; }
+    if (code === 'ArrowLeft') { moveHover(scene, -1, 0); e.preventDefault?.(); return; }
+    if (code === 'ArrowRight') { moveHover(scene, 1, 0); e.preventDefault?.(); return; }
+    if (code === 'ArrowUp') { moveHover(scene, 0, -1); e.preventDefault?.(); return; }
+    if (code === 'ArrowDown') { moveHover(scene, 0, 1); e.preventDefault?.(); return; }
+    if (code === 'KeyC' || code === 'Enter' || code === 'Space') { openSubmenu(scene); e.preventDefault?.(); return; }
+  };
+  scene._invKeyHandler = handler;
+  scene.input.keyboard.on('keydown', handler);
+}
+
+function detachInventoryKeyHandlers(scene) {
+  if (!scene._invKeyHandler) return;
+  try { scene.input.keyboard.off('keydown', scene._invKeyHandler); } catch {}
+  scene._invKeyHandler = null;
+}
+
+function prevTab(scene) {
+  const i = TAB_ORDER.indexOf(scene._invActiveTab || 'weapons');
+  scene._invActiveTab = TAB_ORDER[(i - 1 + TAB_ORDER.length) % TAB_ORDER.length];
+  renderTabs(scene); refreshInventoryGrid(scene);
+}
+function nextTab(scene) {
+  const i = TAB_ORDER.indexOf(scene._invActiveTab || 'weapons');
+  scene._invActiveTab = TAB_ORDER[(i + 1) % TAB_ORDER.length];
+  renderTabs(scene); refreshInventoryGrid(scene);
+}
+
+function moveHover(scene, dx, dy) {
+  const m = gridMetrics(scene);
+  const count = scene._invFiltered?.length || 0;
+  if (count <= 0) { scene._invHover = -1; return; }
+  let r = Math.floor((scene._invHover || 0) / m.cols);
+  let c = (scene._invHover || 0) % m.cols;
+  r = Math.max(0, Math.floor((scene._invHover || 0) / m.cols));
+  c = Math.max(0, (scene._invHover || 0) % m.cols);
+  r += dy; c += dx;
+  // clamp to last row/col that holds items
+  const lastIdx = count - 1;
+  const maxRow = Math.floor(lastIdx / m.cols);
+  if (r < 0) r = 0; if (r > maxRow) r = maxRow;
+  const rowCount = (r < maxRow) ? m.cols : ((lastIdx % m.cols) + 1);
+  if (c < 0) c = 0; if (c > rowCount - 1) c = rowCount - 1;
+  scene._invHover = Math.min(lastIdx, r * m.cols + c);
+  // move highlight
+  if (scene._invHighlight) { const pos = slotPosition(m, scene._invHover); scene._invHighlight.setPosition(pos.x, pos.y); }
+}
+
+// --- Submenu (Inspect/Equip/Drop or Use) ---
+function openSubmenu(scene) {
+  if (!scene._invFiltered || (scene._invHover ?? -1) < 0) return;
+  const idx = scene._invFiltered[scene._invHover];
+  const item = scene.inventoryItems[idx];
+  if (!item) return;
+  const isConsumable = item.type === 'consumable';
+  const options = isConsumable ? ['Inspect', 'Use', 'Drop'] : ['Inspect', 'Equip', 'Drop'];
+  // Build small popup near the slot
+  const m = gridMetrics(scene); const pos = slotPosition(m, scene._invHover);
+  const w = 90, lineH = 14; const h = options.length * lineH + 8;
+  const x = pos.x + m.slotW / 2 + 8; const y = pos.y;
+  const bg = scene.add.rectangle(x, y, w, h, 0x000000, 0.85).setStrokeStyle(1, 0xffffff).setDepth(420).setOrigin(0, 0.5);
+  const nodes = [bg];
+  const labels = [];
+  let selected = 0;
+  for (let i = 0; i < options.length; i++) {
+    const t = scene.add.text(x + 6, y - h/2 + 4 + i * lineH, options[i], { fontSize: '10px', color: i === selected ? '#ffff66' : '#ffffff' }).setDepth(421).setOrigin(0, 0);
+    nodes.push(t); labels.push(t);
+  }
+  scene._invMenu = { bg, nodes, labels, options, selected, idx };
+  scene._invMenuOpen = true;
+}
+
+function closeSubmenu(scene) {
+  if (!scene._invMenuOpen) return;
+  const { nodes } = scene._invMenu || {};
+  if (nodes) nodes.forEach(n => { try { n.destroy(); } catch {} });
+  scene._invMenu = null; scene._invMenuOpen = false;
+}
+
+function handleSubmenuKey(scene, e) {
+  const menu = scene._invMenu; if (!menu) { scene._invMenuOpen = false; return; }
+  const code = e.code;
+  if (code === 'Escape') { closeSubmenu(scene); e.preventDefault?.(); return; }
+  if (code === 'ArrowUp') { menu.selected = (menu.selected - 1 + menu.options.length) % menu.options.length; redrawSubmenu(scene); e.preventDefault?.(); return; }
+  if (code === 'ArrowDown') { menu.selected = (menu.selected + 1) % menu.options.length; redrawSubmenu(scene); e.preventDefault?.(); return; }
+  if (code === 'KeyC' || code === 'Enter' || code === 'Space') { applyMenuAction(scene); e.preventDefault?.(); return; }
+}
+
+function redrawSubmenu(scene) {
+  const { labels, selected } = scene._invMenu || {};
+  if (!labels) return;
+  for (let i = 0; i < labels.length; i++) { labels[i].setColor(i === selected ? '#ffff66' : '#ffffff'); }
+}
+
+function applyMenuAction(scene) {
+  const menu = scene._invMenu; if (!menu) return;
+  const idx = menu.idx; const item = scene.inventoryItems[idx];
+  const choice = menu.options[menu.selected];
+  closeSubmenu(scene);
+  if (!item) return;
+  if (choice === 'Inspect') { openInspectPanel(scene, item); return; }
+  if (choice === 'Equip') {
+    if (item.type === 'weapon') equipWeapon(scene, item);
+    else if (item.type === 'shield') equipShield(scene, item);
+    refreshInventoryGrid(scene); // update equipped highlight
+    scene.updateEquipmentHUD?.();
+    return;
+  }
+  if (choice === 'Use') {
+    if (item.type === 'consumable') {
+      if (item.healAmount) scene.heal?.(item.healAmount);
+      if (item.staminaAmount) { scene.stamina = Math.min(scene.maxStamina || 100, (scene.stamina || 0) + item.staminaAmount); scene.scene.get(SCENES.UI)?.updateStaminaBar?.(Math.round(scene.stamina), scene.maxStamina || 100); }
+      // remove after use
+      removeFromInventory(scene, idx);
+      refreshInventoryGrid(scene);
+      return;
+    }
+  }
+  if (choice === 'Drop') {
+    // If equipped, clear
+    if (scene.equippedWeapon === item) scene.equippedWeapon = null;
+    if (scene.equippedShield === item) scene.equippedShield = null;
+    removeFromInventory(scene, idx);
+    scene.updateEquipmentHUD?.();
+    refreshInventoryGrid(scene);
+  }
+}
+
+function openInspectPanel(scene, item) {
+  // Small centered description panel overlaying the inventory
+  if (scene._invInspectNodes) { try { scene._invInspectNodes.forEach(n => n.destroy()); } catch {} }
+  const modal = scene.inventoryModal;
+  const w = Math.min(180, modal.content.width());
+  const h = 90;
+  const x = modal.center.x; const y = modal.center.y;
+  const bg = scene.add.rectangle(x, y, w, h, 0x111111, 0.95).setStrokeStyle(1, 0xffffff).setDepth(430);
+  const title = scene.add.text(x, y - h/2 + 6, item.name || 'Item', { fontSize: '12px', color: '#ffffaa' }).setOrigin(0.5, 0).setDepth(431);
+  const desc = scene.add.text(x, y - h/2 + 24, getItemDescription(item), { fontSize: '10px', color: '#ffffff', align: 'center', wordWrap: { width: w - 12 } }).setOrigin(0.5, 0).setDepth(431);
+  const hint = scene.add.text(x, y + h/2 - 6, 'C/ESC to close', { fontSize: '9px', color: '#cccccc' }).setOrigin(0.5, 1).setDepth(431);
+  scene._invInspectNodes = [bg, title, desc, hint];
+  // Temp key trap: close on C or ESC
+  const closer = (e) => {
+    if (e.code === 'KeyC' || e.code === 'Escape' || e.code === 'Enter' || e.code === 'Space') {
+      try { scene.input.keyboard.off('keydown', closer); } catch {}
+      if (scene._invInspectNodes) { scene._invInspectNodes.forEach(n => { try { n.destroy(); } catch {} }); scene._invInspectNodes = null; }
+      e.preventDefault?.();
+    }
+  };
+  scene.input.keyboard.on('keydown', closer);
 }

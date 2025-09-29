@@ -5,7 +5,7 @@
 */
 import { MAP_IDS } from './constants';
 import * as Enemies from './enemies.js';
-import { placeObjectOnGrid, getEdgeEntranceCells } from './world.js';
+import { placeObjectOnGrid, getEdgeEntranceCells, createTerrainZone, createTerrainZoneFromCells } from './world.js';
 
 // Simple deterministic PRNG (mulberry32)
 function mulberry32(seed) {
@@ -64,6 +64,62 @@ export function generateBiomeContent(scene) {
     if (!scene.isGridCellAvailable(gx, gy)) return null;
     return placeObjectOnGrid(scene, gx, gy, type, group, data);
   };
+  // Helper: try place terrain zone (doesn't occupy cells but avoid doors/buffers)
+  const tryTerrain = (gx, gy, w, h, type, opts={}) => {
+    // Keep entire rect inside inner bounds
+    if (gx < 1 || gy < 1) return null;
+    if (gx + w > csW - 1 || gy + h > csH - 1) return null;
+    // Build base cells
+    const cells = [];
+    for (let ix = 0; ix < w; ix++) for (let iy = 0; iy < h; iy++) cells.push({ gx: gx + ix, gy: gy + iy });
+    // Add organic single-tile tails along edges (1-3 tails); ensure at least one succeeds
+    const tails = 1 + Math.floor(rand() * 3);
+    const tryAdd = (tgx, tgy) => {
+      if (tgx < 1 || tgy < 1 || tgx >= csW - 1 || tgy >= csH - 1) return;
+      const k = `${tgx},${tgy}`; if (bufferCells.has(k)) return;
+      if (!cells.some(c => c.gx === tgx && c.gy === tgy)) cells.push({ gx: tgx, gy: tgy });
+    };
+    let addedAnyTail = false;
+    for (let t = 0; t < tails; t++) {
+      // choose an edge tile to extend from
+      const fromIdx = Math.floor(rand() * cells.length);
+      const from = cells[fromIdx];
+      const dir = Math.floor(rand() * 4);
+      const dx = [1,-1,0,0][dir];
+      const dy = [0,0,1,-1][dir];
+      const beforeLen = cells.length;
+      tryAdd(from.gx + dx, from.gy + dy);
+      if (cells.length > beforeLen) addedAnyTail = true;
+    }
+    // If no random tail was added (due to buffers/bounds), force a deterministic adjacent cell
+    if (!addedAnyTail) {
+      // pick a border cell of the rectangle and push one outward if legal
+      const candidates = [];
+      for (const c of cells) {
+        const onEdge = (c.gx === gx || c.gx === gx + w - 1 || c.gy === gy || c.gy === gy + h - 1);
+        if (!onEdge) continue;
+        candidates.push(c);
+      }
+      // deterministic pick from candidates
+      const idx = candidates.length ? Math.floor(rand() * candidates.length) : 0;
+      const base = candidates[idx] || { gx, gy };
+      const dirs = [ [1,0], [-1,0], [0,1], [0,-1] ];
+      for (const [dx, dy] of dirs) {
+        const nx = base.gx + dx, ny = base.gy + dy;
+        const k = `${nx},${ny}`;
+        const inBounds = nx >= 1 && ny >= 1 && nx < csW - 1 && ny < csH - 1;
+        const notInsideRect = !(nx >= gx && nx < gx + w && ny >= gy && ny < gy + h);
+        if (inBounds && notInsideRect && !bufferCells.has(k) && !cells.some(c => c.gx === nx && c.gy === ny)) {
+          cells.push({ gx: nx, gy: ny });
+          addedAnyTail = true;
+          break;
+        }
+      }
+    }
+    // Avoid door-adjacent buffer for entire shape
+    for (const c of cells) { if (bufferCells.has(`${c.gx},${c.gy}`)) return null; }
+    return createTerrainZoneFromCells(scene, cells, type, opts);
+  };
 
   // Density and object palette per biome
   const Wg = Math.floor(scene.worldPixelWidth / scene.gridCellSize);
@@ -74,11 +130,32 @@ export function generateBiomeContent(scene) {
     // Enemies: slimes prefer forests
     try { Enemies.spawnSlimeAtGrid(scene, 2 + Math.floor(rand() * (Wg - 4)), 2 + Math.floor(rand() * (Hg - 4)), { speed: 60 }); } catch {}
     try { Enemies.spawnSlimeAtGrid(scene, 2 + Math.floor(rand() * (Wg - 4)), 2 + Math.floor(rand() * (Hg - 4)), { speed: 55 }); } catch {}
+    // Marsh patches: 1-3 patches, up to 5x5, random sizes and positions
+    const marshPatches = 1 + Math.floor(rand() * 3);
+    for (let i = 0; i < marshPatches; i++) {
+      const w = 2 + Math.floor(rand() * 4); // 2..5
+      const h = 2 + Math.floor(rand() * 4); // 2..5
+      const gx = 1 + Math.floor(rand() * (Wg - w - 2));
+      const gy = 1 + Math.floor(rand() * (Hg - h - 2));
+      tryTerrain(gx, gy, w, h, 'marsh', { slowFactor: 0.85, rand });
+    }
   } else if (biome === 'desert') {
     // Cactus props removed: maze walls now provide overworld obstacles
     // Enemies: bats over deserts (windy open)
     try { Enemies.spawnBatAtGrid(scene, 2 + Math.floor(rand() * (Wg - 4)), 2 + Math.floor(rand() * (Hg - 4)), { speed: 90, aggroRadius: 64 }); } catch {}
     if (rand() < 0.5) { try { Enemies.spawnBatAtGrid(scene, 2 + Math.floor(rand() * (Wg - 4)), 2 + Math.floor(rand() * (Hg - 4)), { speed: 80, aggroRadius: 56 }); } catch {} }
+    // Quicksand tiles: limit count per map to prevent frustration
+    const maxPatches = 3; // cap number of quicksand zones
+    const attempts = 8;
+    let placed = 0;
+    for (let i = 0; i < attempts && placed < maxPatches; i++) {
+      const w = 2 + Math.floor(rand() * 3); // 2..4
+      const h = 2 + Math.floor(rand() * 3); // 2..4
+      const gx = 1 + Math.floor(rand() * (Wg - w - 2));
+      const gy = 1 + Math.floor(rand() * (Hg - h - 2));
+      const node = tryTerrain(gx, gy, w, h, 'quicksand', { slowFactor: 0.55, rand });
+      if (node) placed++;
+    }
   } else { // plains
     // Tree props removed: maze walls now provide overworld obstacles
     // Enemies: occasional slime
