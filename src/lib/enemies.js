@@ -5,6 +5,7 @@
 */
 import Phaser from 'phaser';
 import { ensureBatTexture } from './batSprite.js';
+import { ensureWolfTexture } from './wolfSprite.js';
 
 // Lightweight enemy system with simple lifecycle and per-type updates
 
@@ -21,6 +22,9 @@ export function createEnemy(scene, type, x, y, opts = {}) {
       break;
     case 'slime':
       enemy = createSlime(scene, x, y, opts);
+      break;
+    case 'wolf':
+      enemy = createWolf(scene, x, y, opts);
       break;
     default:
       console.warn('Unknown enemy type:', type);
@@ -39,6 +43,9 @@ export function updateEnemies(scene, time, delta) {
         break;
       case 'slime':
         updateSlime(scene, enemy, time, delta);
+        break;
+      case 'wolf':
+        updateWolf(scene, enemy, time, delta);
         break;
     }
   }
@@ -419,4 +426,147 @@ function chooseSafeKnockbackDir(scene, player, dx, dy) {
   }
   // Fallback: no safe dir found, don't move
   return { x: 0, y: 0 };
+}
+
+// ------------------ Wolf ------------------
+
+function createWolf(scene, x, y, opts) {
+  const texKey = ensureWolfTexture(scene);
+  const wolf = scene.physics.add.sprite(x, y, texKey);
+  wolf.enemyType = 'wolf';
+  wolf.setDepth(2);
+  // Make the wolf span two grid tiles in width for imposing presence
+  const cs = scene.gridCellSize ?? 16;
+  try { wolf.setDisplaySize(cs * 2, cs); } catch {}
+  wolf.maxHealth = opts.maxHealth ?? 28;
+  wolf.health = wolf.maxHealth;
+  wolf.damage = opts.damage ?? 12;
+  wolf.speed = opts.speed ?? 110; // run speed when stalking/returning
+  wolf.chargeSpeed = opts.chargeSpeed ?? 260; // very fast charge
+  wolf.windupMs = opts.windupMs ?? 160; // short telegraph
+  wolf.chargeDurationMs = opts.chargeDurationMs ?? 360;
+  wolf.recoverMs = opts.recoverMs ?? 240;
+  wolf.aggroRadius = opts.aggroRadius ?? 170; // far sight lines
+  wolf.deaggroRadius = opts.deaggroRadius ?? 320;
+  wolf.leash = opts.leash ?? 320;
+  wolf.state = 'idle'; // 'idle' | 'stalk' | 'windup' | 'charge' | 'recover' | 'return'
+  wolf.homeX = opts.homeX ?? x;
+  wolf.homeY = opts.homeY ?? y;
+  wolf._phaseUntil = 0;
+  wolf._chargeEndAt = 0;
+  wolf.playerKnockback = opts.playerKnockback ?? 300;
+  wolf.playerKnockbackMs = opts.playerKnockbackMs ?? 200;
+  wolf.playerKnockbackDamping = opts.playerKnockbackDamping ?? 0.9;
+  wolf.playerIFrameMs = opts.playerIFrameMs ?? 400;
+  wolf.knockbackDamping = opts.knockbackDamping ?? 0.9;
+  wolf.postHitPauseMs = opts.postHitPauseMs ?? 160;
+  wolf.persistentAcrossMaps = !!opts.persistentAcrossMaps;
+  // Larger collision body matching display size (with a small margin)
+  try {
+    const bw = cs * 2 - 4;
+    const bh = cs - 4;
+    wolf.body.setSize(bw, bh);
+    const offX = (wolf.displayWidth - bw) / 2;
+    const offY = (wolf.displayHeight - bh) / 2;
+    if (wolf.body.setOffset) wolf.body.setOffset(offX, offY);
+  } catch {}
+  if (scene.worldLayer) { try { scene.worldLayer.add(wolf); } catch {} }
+
+  try {
+    scene.physics.add.overlap(scene.player, wolf, () => {
+      attemptEnemyDamagePlayer(scene, wolf);
+    });
+  } catch {}
+  return wolf;
+}
+
+function updateWolf(scene, wolf, time, delta) {
+  const body = wolf.body;
+  if (!body) return;
+  // If stunned by player, damp velocities and skip AI
+  if (wolf.stunUntil && time < wolf.stunUntil) {
+    try {
+      const vx = body.velocity.x, vy = body.velocity.y;
+      const d = wolf.knockbackDamping ?? 0.9;
+      body.setVelocity(vx * d, vy * d);
+      if (Math.abs(body.velocity.x) < 2 && Math.abs(body.velocity.y) < 2) body.setVelocity(0, 0);
+    } catch {}
+    return;
+  }
+
+  const px = scene.player?.x ?? wolf.homeX;
+  const py = scene.player?.y ?? wolf.homeY;
+  const distPlayer = Phaser.Math.Distance.Between(wolf.x, wolf.y, px, py);
+  const distHome = Phaser.Math.Distance.Between(wolf.x, wolf.y, wolf.homeX, wolf.homeY);
+
+  // State transitions
+  switch (wolf.state) {
+    case 'idle':
+      body.setVelocity(0, 0);
+      if (distPlayer <= wolf.aggroRadius) wolf.state = 'stalk';
+      break;
+    case 'stalk':
+      if (distPlayer > wolf.deaggroRadius || distHome > wolf.leash) {
+        wolf.state = 'return';
+        break;
+      }
+      // Enter windup when fairly close or after a brief stalking window
+      if (!wolf._nextWindupAt || time >= wolf._nextWindupAt || distPlayer < 96) {
+        wolf.state = 'windup';
+        wolf._phaseUntil = time + wolf.windupMs;
+        wolf._lockTargetX = px; wolf._lockTargetY = py; // snapshot position
+        body.setVelocity(0, 0);
+      }
+      break;
+    case 'windup':
+      body.setVelocity(0, 0);
+      if (time >= wolf._phaseUntil) {
+        wolf.state = 'charge';
+        const dx = (wolf._lockTargetX ?? px) - wolf.x;
+        const dy = (wolf._lockTargetY ?? py) - wolf.y;
+        const len = Math.hypot(dx, dy) || 1;
+        body.setVelocity((dx / len) * wolf.chargeSpeed, (dy / len) * wolf.chargeSpeed);
+        wolf._chargeEndAt = time + wolf.chargeDurationMs;
+      }
+      break;
+    case 'charge':
+      if (time >= wolf._chargeEndAt) {
+        wolf.state = 'recover';
+        wolf._phaseUntil = time + wolf.recoverMs;
+        body.setVelocity(0, 0);
+      } else if (distPlayer > wolf.deaggroRadius || distHome > wolf.leash) {
+        wolf.state = 'return';
+      }
+      break;
+    case 'recover':
+      body.setVelocity(0, 0);
+      if (time >= wolf._phaseUntil) {
+        wolf._nextWindupAt = time + 300 + Math.random() * 500; // small cooldown before next windup
+        wolf.state = (distPlayer <= wolf.aggroRadius) ? 'stalk' : 'return';
+      }
+      break;
+    case 'return':
+      if (distHome < 6) {
+        wolf.state = 'idle';
+        body.setVelocity(0, 0);
+        break;
+      }
+      // fallthrough to movement section below
+  }
+
+  // Movement for stalk/return
+  if (wolf.state === 'stalk') {
+    const dx = px - wolf.x, dy = py - wolf.y;
+    const len = Math.hypot(dx, dy) || 1;
+    body.setVelocity((dx / len) * wolf.speed, (dy / len) * wolf.speed);
+  } else if (wolf.state === 'return') {
+    const dx = wolf.homeX - wolf.x, dy = wolf.homeY - wolf.y;
+    const len = Math.hypot(dx, dy) || 1;
+    body.setVelocity((dx / len) * wolf.speed, (dy / len) * wolf.speed);
+  }
+}
+
+export function spawnWolfAtGrid(scene, gridX, gridY, opts = {}) {
+  const { x, y } = scene.gridToWorld(gridX, gridY);
+  return createEnemy(scene, 'wolf', x, y, { homeX: x, homeY: y, ...opts });
 }

@@ -70,37 +70,27 @@ export function generateBiomeContent(scene) {
   const Hg = Math.floor(scene.worldPixelHeight / scene.gridCellSize);
 
   if (biome === 'forest') {
-    const count = 12 + Math.floor(rand() * 6); // 12-17
-    for (let i = 0; i < count; i++) {
-      const gx = 2 + Math.floor(rand() * (Wg - 4));
-      const gy = 2 + Math.floor(rand() * (Hg - 4));
-      const t = rand();
-      const type = t < 0.4 ? 'treeTrunkSmall' : (t < 0.75 ? 'treeTrunkMedium' : 'treeTrunkLarge');
-      tryPlace(gx, gy, type, scene.treeTrunks);
-    }
+    // Tree props removed: maze walls now provide overworld obstacles
     // Enemies: slimes prefer forests
     try { Enemies.spawnSlimeAtGrid(scene, 2 + Math.floor(rand() * (Wg - 4)), 2 + Math.floor(rand() * (Hg - 4)), { speed: 60 }); } catch {}
     try { Enemies.spawnSlimeAtGrid(scene, 2 + Math.floor(rand() * (Wg - 4)), 2 + Math.floor(rand() * (Hg - 4)), { speed: 55 }); } catch {}
   } else if (biome === 'desert') {
-    const count = 6 + Math.floor(rand() * 5); // 6-10
-    for (let i = 0; i < count; i++) {
-      const gx = 2 + Math.floor(rand() * (Wg - 4));
-      const gy = 2 + Math.floor(rand() * (Hg - 4));
-      tryPlace(gx, gy, 'cactus', scene.treeTrunks, { height: 12 + Math.floor(rand() * 8) });
-    }
+    // Cactus props removed: maze walls now provide overworld obstacles
     // Enemies: bats over deserts (windy open)
     try { Enemies.spawnBatAtGrid(scene, 2 + Math.floor(rand() * (Wg - 4)), 2 + Math.floor(rand() * (Hg - 4)), { speed: 90, aggroRadius: 64 }); } catch {}
     if (rand() < 0.5) { try { Enemies.spawnBatAtGrid(scene, 2 + Math.floor(rand() * (Wg - 4)), 2 + Math.floor(rand() * (Hg - 4)), { speed: 80, aggroRadius: 56 }); } catch {} }
   } else { // plains
-    const count = 3 + Math.floor(rand() * 3); // 3-5
-    for (let i = 0; i < count; i++) {
-      const gx = 2 + Math.floor(rand() * (Wg - 4));
-      const gy = 2 + Math.floor(rand() * (Hg - 4));
-      const t = rand();
-      const type = t < 0.6 ? 'treeTrunkSmall' : 'treeTrunkMedium';
-      tryPlace(gx, gy, type, scene.treeTrunks);
-    }
+    // Tree props removed: maze walls now provide overworld obstacles
     // Enemies: occasional slime
     try { Enemies.spawnSlimeAtGrid(scene, 2 + Math.floor(rand() * (Wg - 4)), 2 + Math.floor(rand() * (Hg - 4)), { speed: 58 }); } catch {}
+    // Add wolves only on non-starting plains maps to avoid overwhelming new players
+    if (scene.currentMap !== MAP_IDS.OVERWORLD_01) {
+      const wolfCount = 1 + (rand() < 0.5 ? 1 : 0);
+      for (let i = 0; i < wolfCount; i++) {
+        const gx = 2 + Math.floor(rand() * (Wg - 4));
+        const gy = 2 + Math.floor(rand() * (Hg - 4));
+        try { Enemies.spawnWolfAtGrid(scene, gx, gy, { aggroRadius: 200, deaggroRadius: 360, chargeSpeed: 280, speed: 120, damage: 12 }); } catch {}
+      }
+    }
   }
 }
