@@ -76,14 +76,9 @@ See `src/data/*.example.json` for concrete examples.
 
 ## Risks and mitigations
 
-- Risk: Partial migration duplicates logic
   - Mitigation: Keep a single codepath (loader) per feature as soon as it’s ready; retire old inline map blocks quickly.
-- Risk: Data drift
   - Mitigation: Validate map JSON at load (schema-based or manual checks), log helpful errors with map IDs and coordinates.
 
----
 
 Short-term wins that don’t break current code:
-- Add `worldLayer` and parent all runtime-created map objects, then destroy it on map changes.
-- Introduce a tiny `Door` factory that creates a container (door + handle) and returns a single object to manage/cleanup.
-- Replace overlap auto-retrigger with a `transitionLock` or cooldown flag.
+ - Make edge entrances data-driven with `entranceHalfWidth` per door. World boundary builder leaves exact-width gaps; sensors are sized to match, ensuring perfect alignment and easy customization.

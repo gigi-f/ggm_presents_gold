@@ -5,7 +5,7 @@
 */
 import { MAP_IDS } from './constants';
 import * as Enemies from './enemies.js';
-import { placeObjectOnGrid } from './world.js';
+import { placeObjectOnGrid, getEdgeEntranceCells } from './world.js';
 
 // Simple deterministic PRNG (mulberry32)
 function mulberry32(seed) {
@@ -32,9 +32,25 @@ export function generateBiomeContent(scene) {
   if (!currentMapData || currentMapData.type !== 'overworld') return;
   const biome = getBiomeForMap(scene, scene.currentMap);
 
-  // Build skip set for door cells so we don't block exits
+  // Build a buffer around overworld edge entrances so props are at least two tiles away
   const doors = scene.doorRegistry[scene.currentMap] || {};
-  const skipCells = new Set(Object.values(doors).map(d => `${d.gridX},${d.gridY}`));
+  const edgeCells = getEdgeEntranceCells(scene);
+  const bufferCells = new Set();
+  const csW = Math.floor(scene.worldPixelWidth / scene.gridCellSize);
+  const csH = Math.floor(scene.worldPixelHeight / scene.gridCellSize);
+  for (const key of edgeCells) {
+    const [gx0, gy0] = key.split(',').map(Number);
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dy = -2; dy <= 2; dy++) {
+        if (Math.abs(dx) + Math.abs(dy) <= 2) {
+          const gx = gx0 + dx, gy = gy0 + dy;
+          if (gx >= 0 && gy >= 0 && gx < csW && gy < csH) bufferCells.add(`${gx},${gy}`);
+        }
+      }
+    }
+  }
+  // Also avoid the exact door cell positions (building doors, etc.)
+  for (const d of Object.values(doors)) bufferCells.add(`${d.gridX},${d.gridY}`);
 
   // Seed RNG by map id for determinism across runs
   const seed = (typeof scene.currentMap === 'number' ? scene.currentMap : String(scene.currentMap).split('').reduce((a,c)=>a+c.charCodeAt(0),0)) + 12345;
@@ -43,7 +59,7 @@ export function generateBiomeContent(scene) {
   // Helper to try place an object avoiding occupied & door cells
   const tryPlace = (gx, gy, type, group, data) => {
     if (gx < 1 || gy < 1) return null;
-    if (skipCells.has(`${gx},${gy}`)) return null;
+    if (bufferCells.has(`${gx},${gy}`)) return null;
     if (!scene.isGridCellAvailable(gx, gy)) return null;
     return placeObjectOnGrid(scene, gx, gy, type, group, data);
   };

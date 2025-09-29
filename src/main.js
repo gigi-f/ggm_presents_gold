@@ -93,7 +93,7 @@ export class MainScene extends Phaser.Scene {
     this.maps = {
       [MAP_IDS.OVERWORLD_00]: {
         type: 'overworld',
-        color: 0x87ceeb,
+        color: 0x2e7d32, // forest green
         exits: { down: MAP_IDS.OVERWORLD_01 },
         doors: {
           [DOOR_IDS.SOUTH_ENTRY_A]: { targetMap: MAP_IDS.OVERWORLD_01, targetDoor: DOOR_IDS.NORTH_EXIT_A }
@@ -101,7 +101,7 @@ export class MainScene extends Phaser.Scene {
       },
       [MAP_IDS.OVERWORLD_01]: {
         type: 'overworld',
-        color: 0x228be6,
+        color: 0x66bb6a, // plains green
         exits: { right: MAP_IDS.OVERWORLD_02, up: MAP_IDS.OVERWORLD_00 },
         doors: {
           [DOOR_IDS.SHOP_DOOR_01]: { targetMap: MAP_IDS.SHOP_01, targetDoor: DOOR_IDS.SHOP_EXIT_01 },
@@ -112,7 +112,7 @@ export class MainScene extends Phaser.Scene {
       },
       [MAP_IDS.OVERWORLD_02]: {
         type: 'overworld',
-        color: 0x51cf66,
+        color: 0xD2B48C, // desert beige
         exits: { left: MAP_IDS.OVERWORLD_01 },
         doors: {
           [DOOR_IDS.WEST_ENTRY_A]: { targetMap: MAP_IDS.OVERWORLD_01, targetDoor: DOOR_IDS.EAST_EXIT_A },
@@ -132,20 +132,20 @@ export class MainScene extends Phaser.Scene {
     // Door registry
     this.doorRegistry = {
       [MAP_IDS.OVERWORLD_00]: {
-        [DOOR_IDS.SOUTH_ENTRY_A]: { gridX: 12, gridY: 17, type: 'edge_south' }
+        [DOOR_IDS.SOUTH_ENTRY_A]: { gridX: 12, gridY: 17, type: 'edge_south', entranceHalfWidth: 1 }
       },
       [MAP_IDS.OVERWORLD_01]: {
         [DOOR_IDS.SHOP_DOOR_01]: { gridX: 4, gridY: 8, type: 'building_entrance' },
-        [DOOR_IDS.EAST_EXIT_A]: { gridX: 19, gridY: 5, type: 'edge_east' },
-        [DOOR_IDS.EAST_EXIT_B]: { gridX: 19, gridY: 10, type: 'edge_east' },
-        [DOOR_IDS.NORTH_EXIT_A]: { gridX: 12, gridY: 0, type: 'edge_north' }
+        [DOOR_IDS.EAST_EXIT_A]: { gridX: 19, gridY: 5, type: 'edge_east', entranceHalfWidth: 0 },
+        [DOOR_IDS.EAST_EXIT_B]: { gridX: 19, gridY: 10, type: 'edge_east', entranceHalfWidth: 1 },
+        [DOOR_IDS.NORTH_EXIT_A]: { gridX: 12, gridY: 0, type: 'edge_north', entranceHalfWidth: 2 }
       },
       [MAP_IDS.SHOP_01]: {
         [DOOR_IDS.SHOP_EXIT_01]: { gridX: 10, gridY: 16, type: 'building_exit' }
       },
       [MAP_IDS.OVERWORLD_02]: {
-        [DOOR_IDS.WEST_ENTRY_A]: { gridX: 0, gridY: 5, type: 'edge_west' },
-        [DOOR_IDS.WEST_ENTRY_B]: { gridX: 0, gridY: 10, type: 'edge_west' }
+        [DOOR_IDS.WEST_ENTRY_A]: { gridX: 0, gridY: 5, type: 'edge_west', entranceHalfWidth: 0 },
+        [DOOR_IDS.WEST_ENTRY_B]: { gridX: 0, gridY: 10, type: 'edge_west', entranceHalfWidth: 1 }
       }
     };
 
@@ -980,7 +980,7 @@ export class MainScene extends Phaser.Scene {
         const y = startY + gy * (tileSize + gap) + tileSize / 2;
         const visited = this.visitedMaps.has(Number(mapId)) || this.visitedMaps.has(mapId);
         const isCurrent = (mapId == this.currentMap);
-        const color = (this.maps[mapId]?.type === 'shop') ? 0x5a3b2e : 0x228be6;
+  const color = this.maps[mapId]?.color ?? ((this.maps[mapId]?.type === 'shop') ? 0x5a3b2e : 0x228be6);
         const fillAlpha = visited ? 0.95 : 0.08;
         const stroke = visited ? 0xffffff : 0x777777;
         const r = this.add.rectangle(x, y, tileSize, tileSize, color, fillAlpha).setStrokeStyle(isCurrent ? 2 : 1, isCurrent ? 0xffff00 : stroke).setDepth(622).setScrollFactor(0);

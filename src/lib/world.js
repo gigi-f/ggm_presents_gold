@@ -18,12 +18,10 @@ export function initializeGrid(scene) {
   scene.gridLines = null;
 }
 
+// Legacy helper retained for compatibility; prefer computeEdgeOpenRanges
 export function isInEdgeGap(scene, index, skipSet) {
-  const r = scene.edgeGapRadius ?? 1;
-  for (let i = -r; i <= r; i++) {
-    if (skipSet.has(index + i)) return true;
-  }
-  return false;
+  // With new system, skipSet contains exact indices; treat as direct membership
+  return skipSet?.has(index) || false;
 }
 
 export function isGridCellAvailable(scene, gridX, gridY) {
@@ -288,20 +286,20 @@ export function createDoorsForMap(scene) {
         if (doorData.type === 'edge_west' && gx !== 0) { console.warn(`Door ${doorId} should be on west edge; clamping gx to 0 (was ${gx}).`); gx = 0; }
         if (doorData.type === 'edge_east' && gx !== maxGX) { console.warn(`Door ${doorId} should be on east edge; clamping gx to ${maxGX} (was ${gx}).`); gx = maxGX; }
       }
-      let worldPos = gridToWorld(scene, gx, gy);
-      const r = scene.edgeGapRadius ?? 1;
-      const span = (2 * r + 1);
-      let sensorW = 14, sensorH = 14, offX = 0, offY = 0;
+      const worldPos = gridToWorld(scene, gx, gy);
+      // Compute effective half-width (tiles): honor per-door width, enforce overworld minimum, and match linked door
+      const half = getEffectiveEdgeHalfWidth(scene, scene.currentMap, doorId, { ...doorData, gridX: gx, gridY: gy });
+      const span = (2 * half + 1);
+      let sensorW = scene.gridCellSize, sensorH = scene.gridCellSize;
+      let sx = worldPos.x, sy = worldPos.y;
       if (doorData.type === 'edge_east' || doorData.type === 'edge_west') {
         sensorW = scene.gridCellSize;
         sensorH = scene.gridCellSize * span;
-        offX = (doorData.type === 'edge_west') ? scene.gridCellSize * 0.25 : -scene.gridCellSize * 0.25;
       } else {
         sensorW = scene.gridCellSize * span;
         sensorH = scene.gridCellSize;
-        offY = (doorData.type === 'edge_north') ? scene.gridCellSize * 0.25 : -scene.gridCellSize * 0.25;
       }
-      const sensor = scene.add.rectangle(worldPos.x + offX, worldPos.y + offY, sensorW, sensorH, 0x000000, 0);
+      const sensor = scene.add.rectangle(sx, sy, sensorW, sensorH, 0x000000, 0);
       scene.physics.add.existing(sensor);
       sensor.body.setImmovable(false);
       sensor.isEdgeExit = true;
@@ -311,6 +309,58 @@ export function createDoorsForMap(scene) {
       scene.physics.add.overlap(scene.player, sensor, scene.handleEdgeExit, () => !scene.transitionLock, scene);
     }
   }
+}
+
+function computeEdgeOpenRanges(scene) {
+  // Returns sets of indices for open gaps per edge: { top:Set(gx), bottom:Set(gx), left:Set(gy), right:Set(gy) }
+  const mapDoors = scene.doorRegistry[scene.currentMap] || {};
+  const openTop = new Set();
+  const openBottom = new Set();
+  const openLeft = new Set();
+  const openRight = new Set();
+  const maxGX = (scene.gridWidth ?? Math.floor(scene.worldPixelWidth / scene.gridCellSize)) - 1;
+  const maxGY = (scene.gridHeight ?? Math.floor(scene.worldPixelHeight / scene.gridCellSize)) - 1;
+  for (const [, d] of Object.entries(mapDoors)) {
+    const half = getEffectiveEdgeHalfWidth(scene, scene.currentMap, d.doorId || d.id || Object.keys(mapDoors).find(k => mapDoors[k] === d), d);
+    if (d.type === 'edge_north') {
+      for (let i = Math.max(0, d.gridX - half); i <= Math.min(maxGX, d.gridX + half); i++) openTop.add(i);
+    } else if (d.type === 'edge_south') {
+      for (let i = Math.max(0, d.gridX - half); i <= Math.min(maxGX, d.gridX + half); i++) openBottom.add(i);
+    } else if (d.type === 'edge_west') {
+      for (let j = Math.max(0, d.gridY - half); j <= Math.min(maxGY, d.gridY + half); j++) openLeft.add(j);
+    } else if (d.type === 'edge_east') {
+      for (let j = Math.max(0, d.gridY - half); j <= Math.min(maxGY, d.gridY + half); j++) openRight.add(j);
+    }
+  }
+  return { top: openTop, bottom: openBottom, left: openLeft, right: openRight };
+}
+
+// Compute the effective half-width (in tiles) for an edge entrance:
+// - Uses doorData.entranceHalfWidth or scene.edgeGapRadius as base
+// - Enforces a minimum of 1 (i.e., >= 3-tile gap) for overworld maps
+// - Matches width across linked doors by taking the max of both sides
+function getEffectiveEdgeHalfWidth(scene, mapId, doorId, doorData) {
+  const baseFrom = (d, mapType) => {
+    const raw = Number.isFinite(d?.entranceHalfWidth) ? Math.floor(d.entranceHalfWidth) : Math.floor(scene.edgeGapRadius ?? 0);
+    const half = Math.max(0, raw);
+    // Ensure at least 2 tiles wide → with centered odd spans this means half >= 1 (3 tiles)
+    const minHalf = (mapType === 'overworld') ? 1 : 0;
+    return Math.max(half, minHalf);
+  };
+
+  const mapType = scene.maps?.[mapId]?.type;
+  const thisHalf = baseFrom(doorData, mapType);
+
+  let linkedHalf = 0;
+  const link = scene.maps?.[mapId]?.doors?.[doorId];
+  if (link && link.targetMap && link.targetDoor) {
+    const targetDoor = scene.doorRegistry?.[link.targetMap]?.[link.targetDoor];
+    if (targetDoor) {
+      const targetMapType = scene.maps?.[link.targetMap]?.type;
+      linkedHalf = baseFrom(targetDoor, targetMapType);
+    }
+  }
+  return Math.max(thisHalf, linkedHalf);
 }
 
 export function createMapObjects(scene, options = {}) {
@@ -349,22 +399,11 @@ export function createMapObjects(scene, options = {}) {
   const W = scene.worldPixelWidth;
   const H = scene.worldPixelHeight;
 
-  const mapDoors = scene.doorRegistry[scene.currentMap] || {};
-  const skipTopXs = new Set();
-  const skipBottomXs = new Set();
-  const skipLeftYs = new Set();
-  const skipRightYs = new Set();
-  for (const [, d] of Object.entries(mapDoors)) {
-    if (d.type === 'edge_north') skipTopXs.add(d.gridX);
-    else if (d.type === 'edge_south') skipBottomXs.add(d.gridX);
-    else if (d.type === 'edge_west') skipLeftYs.add(d.gridY);
-    else if (d.type === 'edge_east') skipRightYs.add(d.gridY);
-    // Remove automatic wall gap for building_exit doors - let the door sprite handle access
-  }
+  const open = computeEdgeOpenRanges(scene);
 
   for (let x = 0; x < W; x += cs) {
     const gx = Math.floor(x / cs);
-    if (isInEdgeGap(scene, gx, skipTopXs)) continue;
+  if (open.top.has(gx)) continue;
     if (isShop) {
       const rock1 = scene.add.rectangle(x + cs/2, cs/2, cs, cs, 0x666666);
       scene.physics.add.existing(rock1);
@@ -387,7 +426,7 @@ export function createMapObjects(scene, options = {}) {
 
   for (let x = 0; x < W; x += cs) {
     const gx = Math.floor(x / cs);
-    if (isInEdgeGap(scene, gx, skipBottomXs)) continue;
+  if (open.bottom.has(gx)) continue;
     if (isShop) {
       const rock1 = scene.add.rectangle(x + cs/2, H - (cs + cs/2), cs, cs, 0x666666);
       scene.physics.add.existing(rock1);
@@ -410,7 +449,7 @@ export function createMapObjects(scene, options = {}) {
 
   for (let y = cs; y < H - cs; y += cs) {
     const gy = Math.floor((y - cs/2) / cs);
-    if (isInEdgeGap(scene, gy, skipLeftYs)) continue;
+  if (open.left.has(gy)) continue;
     if (isShop) {
       const rock1 = scene.add.rectangle(cs/2, y + cs/2, cs, cs, 0x666666);
       scene.physics.add.existing(rock1);
@@ -433,7 +472,7 @@ export function createMapObjects(scene, options = {}) {
 
   for (let y = cs; y < H - cs; y += cs) {
     const gy = Math.floor((y - cs/2) / cs);
-    if (isInEdgeGap(scene, gy, skipRightYs)) continue;
+  if (open.right.has(gy)) continue;
     if (isShop) {
       const rock1 = scene.add.rectangle(W - (cs + cs/2), y + cs/2, cs, cs, 0x666666);
       scene.physics.add.existing(rock1);
@@ -586,4 +625,31 @@ export function createMapObjects(scene, options = {}) {
   try { generateBiomeContent(scene); } catch (e) { console.warn('Biome generation failed:', e); }
 
   if (scene.gridVisible) createGridVisualization(scene);
+}
+
+// Return a Set of "gx,gy" strings for all edge entrance cells (north/south/east/west) on the current map.
+export function getEdgeEntranceCells(scene) {
+  const cs = scene.gridCellSize;
+  const maxGX = Math.floor(scene.worldPixelWidth / cs) - 1;
+  const maxGY = Math.floor(scene.worldPixelHeight / cs) - 1;
+  const mapDoors = scene.doorRegistry[scene.currentMap] || {};
+  const cells = new Set();
+  for (const [doorId, d] of Object.entries(mapDoors)) {
+    if (!d || !d.type) continue;
+    const half = getEffectiveEdgeHalfWidth(scene, scene.currentMap, doorId, d);
+    if (d.type === 'edge_north') {
+      const gy = 0;
+      for (let gx = Math.max(0, d.gridX - half); gx <= Math.min(maxGX, d.gridX + half); gx++) cells.add(`${gx},${gy}`);
+    } else if (d.type === 'edge_south') {
+      const gy = maxGY;
+      for (let gx = Math.max(0, d.gridX - half); gx <= Math.min(maxGX, d.gridX + half); gx++) cells.add(`${gx},${gy}`);
+    } else if (d.type === 'edge_west') {
+      const gx = 0;
+      for (let gy = Math.max(0, d.gridY - half); gy <= Math.min(maxGY, d.gridY + half); gy++) cells.add(`${gx},${gy}`);
+    } else if (d.type === 'edge_east') {
+      const gx = maxGX;
+      for (let gy = Math.max(0, d.gridY - half); gy <= Math.min(maxGY, d.gridY + half); gy++) cells.add(`${gx},${gy}`);
+    }
+  }
+  return cells;
 }

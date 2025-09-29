@@ -192,8 +192,8 @@ export function createShopBuilding(scene, doorGridX, doorGridY, opts = {}) {
 
   // Compute a safe sign band above the door and below the facade/roof zone
   const doorTopY = bodyH / 2 - (2 * cs);
-  const signHalfH = (cs * 0.8) / 2;
-  const signClearance = cs * 0.5; // at least half-cell above door
+  const signHalfH = (cs * 0.7) / 2;
+  const signClearance = cs * 0.75; // more clearance above door to avoid overlap with door container/handle
   let signBandY = doorTopY - signClearance - signHalfH;
   const minSignY = facadeTopY + cs * 0.8;
   if (signBandY < minSignY) signBandY = minSignY;
@@ -224,7 +224,9 @@ export function createShopBuilding(scene, doorGridX, doorGridY, opts = {}) {
   const signText = (typeof opts.signText === 'string') ? opts.signText : style.signText;
   if (signText) {
     const signY = signBandY;
-    const sign = scene.add.rectangle(0, signY, Math.min(bodyW * 0.8, cs * 2.5), cs * 0.8, signColor);
+    const signW = Math.min(bodyW * 0.75, cs * 2.2);
+    const signH = cs * 0.7;
+    const sign = scene.add.rectangle(0, signY, signW, signH, signColor);
     sign.setStrokeStyle(1, trimColor, 1);
     building.add(sign);
     const label = scene.add.text(0, signY, signText, { fontSize: '8px', color: '#FFFFFF' });
