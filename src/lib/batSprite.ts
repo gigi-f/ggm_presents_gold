@@ -5,7 +5,7 @@
 */
 
 // Create and cache a small pixel bat texture
-export function ensureBatTexture(scene, key = 'bat') {
+export function ensureBatTexture(scene: any, key = 'bat'): string {
   if (scene.textures.exists(key)) return key;
 
   const w = 20, h = 12;

@@ -6,7 +6,7 @@
 
 // Create a simple prospector sprite (procedural) and save as a texture
 // Features: grey moustache, blue overalls, big brown hat
-export function ensureProspectorTexture(scene, key = 'prospector') {
+export function ensureProspectorTexture(scene: any, key = 'prospector'): string {
   if (scene.textures.exists(key)) return key;
 
   const w = 20, h = 24;

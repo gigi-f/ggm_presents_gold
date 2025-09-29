@@ -5,7 +5,7 @@
 */
 
 // Create and cache a small pixel wolf texture
-export function ensureWolfTexture(scene, key = 'wolf') {
+export function ensureWolfTexture(scene: any, key = 'wolf'): string {
   // If the texture is already available (preloaded image), use it directly
   if (scene.textures.exists(key)) return key;
   // If the loader has the image by the same key, it will be added automatically on scene start

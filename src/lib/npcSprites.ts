@@ -4,8 +4,34 @@
  - Purpose: Procedural NPC sprite generation for shopkeepers with simple variation
 */
 
+export interface ShopkeeperOptions {
+  seed?: string | number;
+  heightPx?: number;            // final texture height (default 18..26)
+  widthPx?: number;             // final texture width (default 12)
+  clothesColor?: number;        // 0xRRGGBB
+  skinColor?: number;           // 0xRRGGBB
+  outlineColor?: number;        // 0xRRGGBB
+  hat?: boolean;
+}
+
+export interface ShopkeeperSprite {
+  npcType: string;
+  npcSeed: string | number;
+  npcConfig: {
+    widthPx: number;
+    heightPx: number;
+    clothes: number;
+    skin: number;
+    outline: number;
+    hat: boolean;
+  };
+  body?: any;
+  setOrigin: (x: number, y: number) => void;
+  setDepth: (depth: number) => void;
+}
+
 /** Simple string hash -> 32-bit int */
-function hash32(str) {
+function hash32(str: string | number): number {
   let h = 2166136261 >>> 0;
   for (let i = 0; i < String(str).length; i++) {
     h ^= String(str).charCodeAt(i);
@@ -15,9 +41,9 @@ function hash32(str) {
 }
 
 /** Mulberry32 PRNG from 32-bit seed */
-function mulberry32(seed) {
+function mulberry32(seed: number): () => number {
   let t = seed >>> 0;
-  return function () {
+  return function (): number {
     t += 0x6D2B79F5;
     let r = Math.imul(t ^ (t >>> 15), 1 | t);
     r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
@@ -26,23 +52,15 @@ function mulberry32(seed) {
 }
 
 /** Pick a value from an array using rng() in [0,1) */
-function pick(rng, arr) { return arr[Math.floor(rng() * arr.length)]; }
+function pick<T>(rng: () => number, arr: T[]): T { 
+  return arr[Math.floor(rng() * arr.length)]; 
+}
 
 /**
  * Create a procedural shopkeeper sprite texture and return a Phaser.GameObjects.Sprite.
  * The sprite is bottom-origin (0.5, 1) to sit nicely on the grid.
- *
- * opts: {
- *   seed?: string|number,
- *   heightPx?: number,            // final texture height (default 18..26)
- *   widthPx?: number,             // final texture width (default 12)
- *   clothesColor?: number,        // 0xRRGGBB
- *   skinColor?: number,           // 0xRRGGBB
- *   outlineColor?: number,        // 0xRRGGBB
- *   hat?: boolean,
- * }
  */
-export function createShopkeeperSprite(scene, x, y, opts = {}) {
+export function createShopkeeperSprite(scene: any, x: number, y: number, opts: ShopkeeperOptions = {}): ShopkeeperSprite {
   const seed = opts.seed ?? (Date.now() + ':' + Math.random());
   const rng = mulberry32(hash32(seed));
 
@@ -100,7 +118,7 @@ export function createShopkeeperSprite(scene, x, y, opts = {}) {
   g.destroy();
 
   // Create sprite
-  const sprite = scene.add.sprite(x, y, key);
+  const sprite = scene.add.sprite(x, y, key) as ShopkeeperSprite;
   sprite.setOrigin(0.5, 1);
   sprite.setDepth(1);
   sprite.npcType = 'shopkeeper';
