@@ -483,6 +483,10 @@ export function createMapObjects(scene, options = {}) {
       try { scene.shopkeeper.destroy(); } catch (e) { /* noop */ }
       scene.shopkeeper = null;
     }
+    if (scene._shopkeeperGunSprite) {
+      try { scene._shopkeeperGunSprite.destroy(); } catch (e) { /* noop */ }
+      scene._shopkeeperGunSprite = null;
+    }
     if (scene.shopCounter) {
       try { scene.shopCounter.destroy(); } catch (e) { /* noop */ }
       scene.shopCounter = null;

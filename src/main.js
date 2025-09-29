@@ -887,6 +887,31 @@ export class MainScene extends Phaser.Scene {
           this.updateShieldPosition();
         }
       }
+      // Shopkeeper shotgun: show and aim at player while retaliation window is active
+      try {
+        const now2 = this.time?.now ?? 0;
+        const keep = this.shopkeeper;
+        const shouldShowGun = keep && keep.active && this.currentMap === MAP_IDS.SHOP_01 && this._shopkeeperGunVisibleUntil && now2 < this._shopkeeperGunVisibleUntil;
+        if (shouldShowGun) {
+          if (!this._shopkeeperGunSprite || !this._shopkeeperGunSprite.active) {
+            // Simple rectangle as shotgun; anchored at keeper hand side
+            const w = 18, h = 5;
+            this._shopkeeperGunSprite = this.add.rectangle(keep.x, keep.y, w, h, 0x222222).setOrigin(1, -1).setDepth(2);
+            if (this.worldLayer) this.worldLayer.add(this._shopkeeperGunSprite);
+          }
+          // Aim at player
+          const dx = this.player.x - keep.x; const dy = this.player.y - keep.y;
+          const angle = Math.atan2(dy, dx);
+          // Position at shopkeeper edge: offset slightly from center toward facing direction
+          const off = 6;
+          this._shopkeeperGunSprite.x = keep.x + Math.cos(angle) * off;
+          this._shopkeeperGunSprite.y = keep.y + Math.sin(angle) * off;
+          this._shopkeeperGunSprite.rotation = angle;
+          this._shopkeeperGunSprite.setVisible(true);
+        } else if (this._shopkeeperGunSprite) {
+          this._shopkeeperGunSprite.setVisible(false);
+        }
+      } catch {}
   
   // Overworld transitions are handled solely by edge sensors; no boundary-based triggers.
       

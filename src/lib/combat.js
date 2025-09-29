@@ -138,6 +138,8 @@ export function swingMeleeWeapon(scene) {
           const now = scene.time?.now ?? performance.now?.() ?? Date.now();
           if (!scene._shopkeeperRetaliateUntil || now >= scene._shopkeeperRetaliateUntil) {
             scene._shopkeeperRetaliateUntil = now + 600; // 0.6s cooldown
+            // Show the shotgun for a brief period and let the main update aim it at the player
+            scene._shopkeeperGunVisibleUntil = Math.max(scene._shopkeeperGunVisibleUntil || 0, now + 6400);
             // Fire a fast projectile toward the player
             const bullet = scene.add.rectangle(keep.x, keep.y, 4, 4, 0xff3333).setDepth(3);
             if (scene.worldLayer) { try { scene.worldLayer.add(bullet); } catch {} }
