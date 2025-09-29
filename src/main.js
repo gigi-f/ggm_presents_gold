@@ -4,7 +4,11 @@
  - See: docs/ai/index.json
 */
 import Phaser from 'phaser';
-import wolfPng from '../assets/sprites/wolf.png';
+import wolfPng from '../assets/sprites/wolf_small.png';
+import prospectorDownPng from '../assets/sprites/prospector_down.png';
+import prospectorLeftPng from '../assets/sprites/prospector_left.png';
+import prospectorRightPng from '../assets/sprites/prospector_right.png';
+import prospectorUpPng from '../assets/sprites/prospector_up.png';
 import { MAP_IDS, DOOR_IDS, SCENES } from './lib/constants';
 import { getBiomeForMap } from './lib/biomes.js';
 import * as World from './lib/world.js';
@@ -12,7 +16,7 @@ import { beginTransition, endTransition, scrollTransitionToMap as scrollXfer } f
 import * as Inventory from './lib/inventory.js';
 import * as Combat from './lib/combat.js';
 import { initWallet, addToWallet, spendFromWallet, getItemPrice, getWalletTotal } from './lib/economy.js';
-import { ensureProspectorTexture } from './lib/playerSprite.js';
+// Using PNG sprites for the prospector in four directions
 import { updateEnemies } from './lib/enemies.js';
 import { createModal, addTitle, UI as UIRegistry } from './lib/ui.js';
 
@@ -533,6 +537,13 @@ export class MainScene extends Phaser.Scene {
       try {
         this.load.image('wolf', wolfPng);
       } catch {}
+      // Preload player sprites (prospector facing directions)
+      try {
+        this.load.image('prospector_down', prospectorDownPng);
+        this.load.image('prospector_left', prospectorLeftPng);
+        this.load.image('prospector_right', prospectorRightPng);
+        this.load.image('prospector_up', prospectorUpPng);
+      } catch {}
     }
   
   create() {
@@ -724,9 +735,9 @@ export class MainScene extends Phaser.Scene {
   // Resize camera to account for larger world and HUD band on top
   this.cameras.main.setViewport(0, this.hudHeight, this.worldPixelWidth, this.worldPixelHeight);
   this.cameras.main.setBackgroundColor(this.maps[this.currentMap].color);
-  // Create player as a physics-enabled sprite using the procedural prospector texture
-  const playerTexKey = ensureProspectorTexture(this);
-  this.player = this.physics.add.sprite(this.worldPixelWidth/2, this.worldPixelHeight/2, playerTexKey);
+  // Create player as a physics-enabled sprite using the PNG prospector texture
+  const initialPlayerTexKey = 'prospector_right';
+  this.player = this.physics.add.sprite(this.worldPixelWidth/2, this.worldPixelHeight/2, initialPlayerTexKey);
       this.player.setDepth(1); // Put player above ground objects
       // Player should be exactly 1x1 grid cell in size (display and collision)
       const cs = this.gridCellSize;
@@ -827,6 +838,27 @@ export class MainScene extends Phaser.Scene {
         }
 
         body.setVelocity(velocityX, velocityY);
+
+        // Swap player texture based on facing direction
+        // Only update when the desired texture differs to avoid redundant setTexture calls
+        const desiredKey = (() => {
+          switch (this.lastDirection) {
+            case 'left': return 'prospector_left';
+            case 'up': return 'prospector_up';
+            case 'down': return 'prospector_down';
+            case 'right':
+            default: return 'prospector_right';
+          }
+        })();
+        try {
+          const currentKey = this.player?.texture?.key;
+          if (currentKey !== desiredKey) {
+            this.player.setTexture(desiredKey);
+            // Keep the sprite scaled to a single grid cell when texture changes
+            const cs2 = this.gridCellSize;
+            try { this.player.setDisplaySize(cs2, cs2); } catch {}
+          }
+        } catch {}
       } else {
         // Apply knockback damping so the push tapers off smoothly
         const d = this.playerKnockbackDamping ?? 0.9;
