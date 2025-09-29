@@ -116,6 +116,57 @@ export function swingMeleeWeapon(scene) {
     });
   }
 
+  // If the player swung at the shopkeeper, the shopkeeper retaliates with a powerful shot
+  try {
+    const keep = scene.shopkeeper;
+    if (keep && keep.active && scene.currentMap && String(scene.maps?.[scene.currentMap]?.type) === 'shop') {
+      const dist = Phaser.Math.Distance.Between(scene.player.x, scene.player.y, keep.x, keep.y);
+      if (dist <= 36) {
+        const dx = keep.x - scene.player.x; const dy = keep.y - scene.player.y;
+        const keepAngle = Phaser.Math.RadToDeg(Math.atan2(dy, dx));
+        const dirAngle = (() => {
+          switch (scene.lastDirection) {
+            case 'left': return 180;
+            case 'up': return -90;
+            case 'down': return 90;
+            default: return 0; // right
+          }
+        })();
+        const diff = Phaser.Math.Angle.WrapDegrees(keepAngle - dirAngle);
+        if (Math.abs(diff) <= 60) {
+          // Rate-limit retaliation to once per short window
+          const now = scene.time?.now ?? performance.now?.() ?? Date.now();
+          if (!scene._shopkeeperRetaliateUntil || now >= scene._shopkeeperRetaliateUntil) {
+            scene._shopkeeperRetaliateUntil = now + 600; // 0.6s cooldown
+            // Fire a fast projectile toward the player
+            const bullet = scene.add.rectangle(keep.x, keep.y, 4, 4, 0xff3333).setDepth(3);
+            if (scene.worldLayer) { try { scene.worldLayer.add(bullet); } catch {} }
+            scene.physics.add.existing(bullet);
+            const body = bullet.body;
+            if (body) {
+              body.setAllowGravity?.(false);
+              body.setImmovable?.(false);
+              const vx = scene.player.x - keep.x; const vy = scene.player.y - keep.y;
+              const len = Math.hypot(vx, vy) || 1;
+              const speed = 380;
+              body.setVelocity((vx/len) * speed, (vy/len) * speed);
+            }
+            // On hit: massive damage
+            const overlap = scene.physics.add.overlap(bullet, scene.player, () => {
+              try { overlap?.destroy?.(); } catch {}
+              try { bullet?.destroy?.(); } catch {}
+              try { scene.takeDamage?.(500); } catch {}
+            });
+            // Auto-cleanup after 1.25s in case it misses
+            scene.time.delayedCall(1250, () => { try { overlap?.destroy?.(); } catch {}; try { bullet?.destroy?.(); } catch {}; });
+            // Optional feedback
+            try { scene.showToast?.('You angered the shopkeeper!'); } catch {}
+          }
+        }
+      }
+    }
+  } catch {}
+
   scene.time.delayedCall(300, () => { scene.meleeWeaponSwinging = false; });
 }
 
