@@ -9,6 +9,7 @@ import { createShopBuilding as genShop } from './buildings.js';
 import * as Enemies from './enemies.js';
 import { createShopkeeperSprite } from './npcSprites.js';
 import { generateBiomeContent } from './biomes.js';
+import { generateMazeWalls } from './maze.js';
 
 export function initializeGrid(scene) {
   scene.gridWidth = Math.floor(scene.worldPixelWidth / scene.gridCellSize);
@@ -596,15 +597,21 @@ export function createMapObjects(scene, options = {}) {
   }
 
   createDoorsForMap(scene);
+  // Generate maze walls before wiring colliders so physics includes them
+  try { generateMazeWalls(scene); } catch (e) { console.warn('Maze generation failed:', e); }
+
+  // Colliders (after maze so new group is included)
   scene.physics.add.collider(scene.player, scene.boundaryRocks);
   scene.physics.add.collider(scene.player, scene.treeTrunks);
   scene.physics.add.collider(scene.player, scene.buildingWalls);
+  if (scene.mazeWalls) scene.physics.add.collider(scene.player, scene.mazeWalls);
   if (scene.shopCounter) scene.physics.add.collider(scene.player, scene.shopCounter);
   // Enemies should respect world collisions
   if (scene.enemiesGroup) {
     scene.physics.add.collider(scene.enemiesGroup, scene.boundaryRocks);
     scene.physics.add.collider(scene.enemiesGroup, scene.treeTrunks);
     scene.physics.add.collider(scene.enemiesGroup, scene.buildingWalls);
+    if (scene.mazeWalls) scene.physics.add.collider(scene.enemiesGroup, scene.mazeWalls);
     if (scene.shopCounter) scene.physics.add.collider(scene.enemiesGroup, scene.shopCounter);
   }
 

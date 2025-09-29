@@ -23,6 +23,7 @@ export function getBiomeForMap(scene, mapId) {
     case MAP_IDS.OVERWORLD_00: return 'forest';
     case MAP_IDS.OVERWORLD_01: return 'plains';
     case MAP_IDS.OVERWORLD_02: return 'desert';
+    case MAP_IDS.OVERWORLD_03: return 'plains';
     default: return 'plains';
   }
 }

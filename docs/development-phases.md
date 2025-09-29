@@ -91,7 +91,6 @@ Recent changes (delta):
   1. Forest Zone (Starter Area)
     - [~] Basic enemies (bat)
     - [x] Initial currency ingots
-    - [ ] Tutorial elements
   
   2. Village Zone (Trading Hub)
     - [x] Shopkeeper NPC and shop interior

@@ -8,6 +8,7 @@ export const MAP_IDS = {
   OVERWORLD_00: 'overworld_00',
   OVERWORLD_01: 'overworld_01',
   OVERWORLD_02: 'overworld_02',
+  OVERWORLD_03: 'overworld_03',
   SHOP_01: 'shop_01'
 } as const;
 
@@ -19,7 +20,9 @@ export const DOOR_IDS = {
   WEST_ENTRY_A: 'west_entry_A',
   WEST_ENTRY_B: 'west_entry_B',
   NORTH_EXIT_A: 'north_exit_A',
-  SOUTH_ENTRY_A: 'south_entry_A'
+  SOUTH_ENTRY_A: 'south_entry_a',
+  SOUTH_EXIT_A: 'south_exit_a',
+  NORTH_ENTRY_A: 'north_entry_a'
 } as const;
 
 export const DIRECTIONS = {

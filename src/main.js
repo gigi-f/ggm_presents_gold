@@ -86,7 +86,8 @@ export class MainScene extends Phaser.Scene {
       [MAP_IDS.OVERWORLD_00]: { gx: 0, gy: 0, type: 'overworld' },
       [MAP_IDS.OVERWORLD_01]: { gx: 0, gy: 1, type: 'overworld' },
       [MAP_IDS.OVERWORLD_02]: { gx: 1, gy: 1, type: 'overworld' },
-      [MAP_IDS.SHOP_01]:      { gx: 0, gy: 2, type: 'shop' }
+      [MAP_IDS.OVERWORLD_03]: { gx: 0, gy: 2, type: 'overworld' },
+      [MAP_IDS.SHOP_01]:      { gx: 1, gy: 2, type: 'shop' }
     };
 
     // Map graph
@@ -102,12 +103,21 @@ export class MainScene extends Phaser.Scene {
       [MAP_IDS.OVERWORLD_01]: {
         type: 'overworld',
         color: 0x66bb6a, // plains green
-        exits: { right: MAP_IDS.OVERWORLD_02, up: MAP_IDS.OVERWORLD_00 },
+        exits: { right: MAP_IDS.OVERWORLD_02, up: MAP_IDS.OVERWORLD_00, down: MAP_IDS.OVERWORLD_03 },
         doors: {
           [DOOR_IDS.SHOP_DOOR_01]: { targetMap: MAP_IDS.SHOP_01, targetDoor: DOOR_IDS.SHOP_EXIT_01 },
           [DOOR_IDS.EAST_EXIT_A]: { targetMap: MAP_IDS.OVERWORLD_02, targetDoor: DOOR_IDS.WEST_ENTRY_A },
           [DOOR_IDS.EAST_EXIT_B]: { targetMap: MAP_IDS.OVERWORLD_02, targetDoor: DOOR_IDS.WEST_ENTRY_B },
-          [DOOR_IDS.NORTH_EXIT_A]: { targetMap: MAP_IDS.OVERWORLD_00, targetDoor: DOOR_IDS.SOUTH_ENTRY_A }
+          [DOOR_IDS.NORTH_EXIT_A]: { targetMap: MAP_IDS.OVERWORLD_00, targetDoor: DOOR_IDS.SOUTH_ENTRY_A },
+          [DOOR_IDS.SOUTH_EXIT_A]: { targetMap: MAP_IDS.OVERWORLD_03, targetDoor: DOOR_IDS.NORTH_ENTRY_A }
+        }
+      },
+      [MAP_IDS.OVERWORLD_03]: {
+        type: 'overworld',
+        color: 0x88cc77, // slightly different plains hue
+        exits: { up: MAP_IDS.OVERWORLD_01 },
+        doors: {
+          [DOOR_IDS.NORTH_ENTRY_A]: { targetMap: MAP_IDS.OVERWORLD_01, targetDoor: DOOR_IDS.SOUTH_EXIT_A }
         }
       },
       [MAP_IDS.OVERWORLD_02]: {
@@ -138,7 +148,11 @@ export class MainScene extends Phaser.Scene {
         [DOOR_IDS.SHOP_DOOR_01]: { gridX: 4, gridY: 8, type: 'building_entrance' },
         [DOOR_IDS.EAST_EXIT_A]: { gridX: 19, gridY: 5, type: 'edge_east', entranceHalfWidth: 0 },
         [DOOR_IDS.EAST_EXIT_B]: { gridX: 19, gridY: 10, type: 'edge_east', entranceHalfWidth: 1 },
-        [DOOR_IDS.NORTH_EXIT_A]: { gridX: 12, gridY: 0, type: 'edge_north', entranceHalfWidth: 2 }
+        [DOOR_IDS.NORTH_EXIT_A]: { gridX: 12, gridY: 0, type: 'edge_north', entranceHalfWidth: 2 },
+        [DOOR_IDS.SOUTH_EXIT_A]: { gridX: 12, gridY: 17, type: 'edge_south', entranceHalfWidth: 1 }
+      },
+      [MAP_IDS.OVERWORLD_03]: {
+        [DOOR_IDS.NORTH_ENTRY_A]: { gridX: 12, gridY: 0, type: 'edge_north', entranceHalfWidth: 1 }
       },
       [MAP_IDS.SHOP_01]: {
         [DOOR_IDS.SHOP_EXIT_01]: { gridX: 10, gridY: 16, type: 'building_exit' }

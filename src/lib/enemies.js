@@ -355,11 +355,16 @@ function attemptEnemyDamagePlayer(scene, enemy) {
   // Player knockback away from enemy
   try {
     if (scene.player?.body) {
-      const dx = scene.player.x - enemy.x; const dy = scene.player.y - enemy.y;
-      const len = Math.hypot(dx, dy) || 1;
       const kb = enemy.playerKnockback ?? 240;
-      // Set initial knockback impulse
-      scene.player.body.setVelocity((dx / len) * kb, (dy / len) * kb);
+      // Base direction away from enemy
+      let dx = scene.player.x - enemy.x; let dy = scene.player.y - enemy.y;
+      let len = Math.hypot(dx, dy) || 1;
+      let dir = { x: dx / len, y: dy / len };
+
+      // Choose a safe knockback direction that won't immediately push into a blocking obstacle
+      dir = chooseSafeKnockbackDir(scene, scene.player, dir.x, dir.y);
+      // Apply knockback impulse
+      scene.player.body.setVelocity(dir.x * kb, dir.y * kb);
       // Mark knockback window so main update won't override movement
       scene.playerKnockbackUntil = now + (enemy.playerKnockbackMs ?? 200);
       scene.playerKnockbackDamping = enemy.playerKnockbackDamping ?? 0.9;
@@ -369,4 +374,49 @@ function attemptEnemyDamagePlayer(scene, enemy) {
     }
   } catch {}
   return true;
+}
+
+// --- Knockback safety helpers ---
+function isBlockedAt(scene, cx, cy, w, h, ignoreBody) {
+  try {
+    const hits = scene.physics.world.overlapRect(cx - w / 2, cy - h / 2, w, h, true, true);
+    for (const b of hits) {
+      if (!b || !b.enable) continue;
+      if (ignoreBody && b === ignoreBody) continue;
+      // Treat immovable bodies (rocks, tree trunks, walls, counters) as blocking
+      if (b.immovable) return true;
+    }
+  } catch {}
+  return false;
+}
+
+function chooseSafeKnockbackDir(scene, player, dx, dy) {
+  const body = player.body;
+  if (!body) return { x: dx, y: dy };
+  const step = Math.max(8, Math.ceil(Math.max(body.width, body.height) * 0.75));
+  const sdx = Math.sign(dx) || 0; const sdy = Math.sign(dy) || 0;
+  const cand = [];
+  // Preferred original direction
+  cand.push({ x: dx, y: dy });
+  // Reverse
+  cand.push({ x: -dx, y: -dy });
+  // Axis slides (forward)
+  if (sdx !== 0) cand.push({ x: sdx, y: 0 });
+  if (sdy !== 0) cand.push({ x: 0, y: sdy });
+  // Axis slides (reverse)
+  if (sdx !== 0) cand.push({ x: -sdx, y: 0 });
+  if (sdy !== 0) cand.push({ x: 0, y: -sdy });
+
+  for (let i = 0; i < cand.length; i++) {
+    const v = cand[i];
+    const len = Math.hypot(v.x, v.y) || 1;
+    const ux = v.x / len, uy = v.y / len;
+    const testX = player.x + ux * step;
+    const testY = player.y + uy * step;
+    if (!isBlockedAt(scene, testX, testY, body.width, body.height, body)) {
+      return { x: ux, y: uy };
+    }
+  }
+  // Fallback: no safe dir found, don't move
+  return { x: 0, y: 0 };
 }
