@@ -12,13 +12,13 @@ import prospectorUpPng from '../assets/sprites/prospector_up.png';
 import { MAP_IDS, DOOR_IDS, SCENES } from './lib/constants';
 import { getBiomeForMap } from './lib/biomes.js';
 import * as World from './lib/world.js';
-import { beginTransition, endTransition, scrollTransitionToMap as scrollXfer } from './lib/transitions.js';
+import { beginTransition, endTransition, scrollTransitionToMap as scrollXfer } from './lib/transitions';
 import * as Inventory from './lib/inventory.js';
 import * as Combat from './lib/combat.js';
 import { initWallet, addToWallet, spendFromWallet, getItemPrice, getWalletTotal } from './lib/economy.js';
 // Using PNG sprites for the prospector in four directions
-import { updateEnemies } from './lib/enemies.js';
-import { createModal, addTitle, UI as UIRegistry } from './lib/ui.js';
+import { updateEnemies } from './lib/enemies';
+import { createModal, addTitle, UI as UIRegistry } from './lib/ui';
 
 export class MainScene extends Phaser.Scene {
   constructor() {
@@ -802,7 +802,7 @@ export class MainScene extends Phaser.Scene {
         const openNames = UIRegistry.names ? UIRegistry.names() : [];
         if (!openNames.includes('pause')) {
           // Still tick enemies so they can settle/return while dialog
-          updateEnemies(this, time, delta);
+          updateEnemies(this, time);
         }
         return;
       }
@@ -940,7 +940,7 @@ export class MainScene extends Phaser.Scene {
       }
 
       // Enemies update
-      updateEnemies(this, time, delta);
+  updateEnemies(this, time);
 
       // Mini-map upkeep
       if (this.miniMapVisible) {

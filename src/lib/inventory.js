@@ -4,7 +4,7 @@
  - See: docs/ai/index.json
 */
 import { SCENES } from './constants';
-import { createModal, addTitle, UI, clampNodeToContent, avoidOverlaps, truncateTextToFit } from './ui.js';
+import { createModal, addTitle, UI, clampNodeToContent, avoidOverlaps, truncateTextToFit } from './ui.ts';
 import * as World from './world.js';
 
 // --- Helpers: categorization and descriptions ---
