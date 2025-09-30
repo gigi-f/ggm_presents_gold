@@ -12,7 +12,8 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "phaser": "^3.80.0"
+    "phaser": "^3.80.0",
+    "phaser3-rex-plugins": "^1.80.16"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

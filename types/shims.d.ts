@@ -28,6 +28,7 @@ declare global {
       tweens: any;
       children: any;
       textures: any;
+      rexUI?: any;
     }
     
     interface GameObjects {
@@ -40,4 +41,9 @@ declare global {
       Group: any;
     }
   }
+}
+
+declare module 'phaser3-rex-plugins/templates/ui/ui-plugin.js' {
+  const RexUIPlugin: any;
+  export default RexUIPlugin;
 }

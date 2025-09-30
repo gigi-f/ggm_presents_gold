@@ -19,6 +19,7 @@ import { initWallet, addToWallet, spendFromWallet, getItemPrice, getWalletTotal 
 // Using PNG sprites for the prospector in four directions
 import { updateEnemies } from './lib/enemies';
 import { createModal, addTitle, UI as UIRegistry } from './lib/ui';
+import * as RexUI from './ui/rex';
 
 export class MainScene extends Phaser.Scene {
   constructor() {
@@ -32,12 +33,13 @@ export class MainScene extends Phaser.Scene {
     // Visual scale for player sprite (keep physics body at grid size)
     this.playerDisplayScale = 1.5;
 
-    // State flags
+  // State flags
     this.currentMap = MAP_IDS.OVERWORLD_01;
     this.transitionLock = false;
     this.isScrolling = false;
     this.worldLayer = null;
   this.isPausedOverlay = false;
+    this.devFlags = { useRexUI: true };
     // Debug overlays
     this.collisionDebugVisible = false;
     this.collisionDebugGfx = null;
@@ -1109,7 +1111,13 @@ export class MainScene extends Phaser.Scene {
       }
       UIRegistry.open('pause');
       this.isPausedOverlay = true;
-      // Build pause overlay
+      if (this.devFlags?.useRexUI && this.rexUI) {
+        this.pauseDialog = RexUI.showPauseMenuRex(this);
+        try { this.physics.world.pause(); } catch {}
+        try { this.tweens.pauseAll(); } catch {}
+        return;
+      }
+      // Build pause overlay (fallback)
       this.pauseModal = createModal(this, { coverHUD: false, depthBase: 600 });
       this.pauseTitle = addTitle(this, this.pauseModal, 'Paused', { fontSize: '14px', color: '#ffffff' });
       const hint = 'ESC to resume';
@@ -1139,6 +1147,8 @@ export class MainScene extends Phaser.Scene {
     closePauseMenu() {
       this.isPausedOverlay = false;
       UIRegistry.close('pause');
+      // Rex dialog cleanup if used
+      if (this.pauseDialog) { try { this.pauseDialog.destroy?.(); } catch {} this.pauseDialog = null; }
       // Destroy nodes
   [this.pauseHint, this.pauseTitle].forEach(n => { try { n?.destroy(); } catch {} });
   if (this.pauseButtons) { this.pauseButtons.forEach(n => { try { n?.destroy(); } catch {} }); this.pauseButtons = null; }
@@ -1525,6 +1535,63 @@ export class MainScene extends Phaser.Scene {
       if (this.dialogOpen) return;
       this.dialogOpen = true;
       UIRegistry.open('shop');
+      // Rex UI variant
+      if (this.devFlags?.useRexUI && this.rexUI) {
+        // Gather available items in the shop
+        const items = [];
+        const tryPush = (obj) => { if (obj && obj.isShopItem && obj.active) items.push(obj); };
+        tryPush(this.meleeWeapon1); tryPush(this.meleeWeapon2); tryPush(this.meleeWeapon3);
+        tryPush(this.shield1); tryPush(this.shield2); tryPush(this.shield3);
+        tryPush(this.healthPotion1); tryPush(this.healthPotion2); tryPush(this.staminaTonic1);
+        const fmtPrice = (p) => { const s = Math.floor(p / 5), c = p % 5; if (s > 0 && c > 0) return `${s}s ${c}c`; if (s > 0) return `${s}s`; return `${c}c`; };
+        const totalP = (this.getWalletTotal || getWalletTotal)?.call(this, this) ?? getWalletTotal(this);
+        const enriched = items.map(it => {
+          const price = getItemPrice(it.itemType, it.itemSubtype);
+          return { ...it, price, priceStr: `${fmtPrice(price)} (${price}p)`, affordable: totalP >= price };
+        });
+        const silver = (this.wallet?.counts?.silver || 0);
+        const copper = (this.wallet?.counts?.copper || 0);
+        const walletText = `Wallet: ${silver}s ${copper}c (${fmtPrice(totalP)} / ${totalP}p)`;
+        const onBuy = (choice) => {
+          const price = choice.price;
+          const ok = (this.spendFromWallet || this._spendFromWalletShim)?.call(this, price);
+          if (!ok) { this.showToast('Not enough coins!'); return false; }
+          if (choice.itemType === 'weapon') {
+            const weaponItem = { type: 'weapon', subtype: choice.itemSubtype, name: choice.itemName, color: this.getWeaponColor(choice.itemSubtype), size: this.getWeaponSize(choice.itemSubtype), swingDuration: this.getWeaponSwingDuration(choice.itemSubtype) };
+            const added = this.addToInventory(weaponItem);
+            if (added) {
+              try { choice.destroy(); } catch {}
+              if (!this.equippedWeapon) { this.equipWeapon(weaponItem); this.updateEquipmentHUD(); }
+              if (choice === this.meleeWeapon1) this.collectedItems.meleeWeapon1 = true;
+              else if (choice === this.meleeWeapon2) this.collectedItems.meleeWeapon2 = true;
+              else if (choice === this.meleeWeapon3) this.collectedItems.meleeWeapon3 = true;
+              this.showToast(`Purchased ${weaponItem.name}!`);
+            } else { this._spendFromWalletShim(-price); this.showToast('Inventory full!'); return false; }
+          } else if (choice.itemType === 'shield') {
+            const shieldItem = { type: 'shield', subtype: choice.itemSubtype, name: choice.itemName, color: this.getShieldColor(choice.itemSubtype), size: this.getShieldSize(choice.itemSubtype) };
+            const added = this.addToInventory(shieldItem);
+            if (added) {
+              try { choice.destroy(); } catch {}
+              if (!this.equippedShield) { this.equipShield(shieldItem); this.updateEquipmentHUD(); }
+              if (choice === this.shield1) this.collectedItems.shield1 = true;
+              else if (choice === this.shield2) this.collectedItems.shield2 = true;
+              else if (choice === this.shield3) this.collectedItems.shield3 = true;
+              this.showToast(`Purchased ${shieldItem.name}!`);
+            } else { this._spendFromWalletShim(-price); this.showToast('Inventory full!'); return false; }
+          } else if (choice.itemType === 'consumable' || choice.itemType === 'potion' || choice.itemType === 'consumable') {
+            try { choice.destroy(); } catch {}
+            if (choice === this.healthPotion1) this.collectedItems.healthPotion1 = true;
+            else if (choice === this.healthPotion2) this.collectedItems.healthPotion2 = true;
+            else if (choice === this.staminaTonic1) this.collectedItems.staminaTonic1 = true;
+            if (choice.healAmount && choice.healAmount > 0) { this.heal(choice.healAmount); this.showToast(`Used ${choice.itemName}! +${choice.healAmount} HP`); }
+            if (choice.staminaAmount && choice.staminaAmount > 0) { this.stamina = Math.min(this.maxStamina, this.stamina + choice.staminaAmount); this.updateStaminaBar(); this.showToast(`Used ${choice.itemName}! +${choice.staminaAmount} Stamina`); }
+          }
+          return true;
+        };
+        const onClose = () => { this.closeShopDialog(); };
+        this.shopDialog = RexUI.showShopDialogRex(this, enriched, { onClose, onBuy, walletText, pageSize: 6 });
+        return;
+      }
       // Gather available items in the shop
       const items = [];
       const tryPush = (obj) => { if (obj && obj.isShopItem && obj.active) items.push(obj); };
@@ -1703,6 +1770,7 @@ export class MainScene extends Phaser.Scene {
 
     closeShopDialog() {
       this.dialogOpen = false;
+      if (this.shopDialog) { try { this.shopDialog.destroy(); } catch {} this.shopDialog = null; }
   [this.dialogBackdrop, this.dialogPanel, this.dialogText, this.dialogHint, this.dialogWalletText, this.dialogPageText].forEach(el => { try { el?.destroy(); } catch {} });
       if (this.dialogListTexts) { this.dialogListTexts.forEach(t => { try { t.destroy(); } catch {} }); }
       this.dialogBackdrop = this.dialogPanel = this.dialogText = this.dialogHint = this.dialogWalletText = this.dialogPageText = null;

@@ -18,6 +18,7 @@
   "rng": "src/lib/rng.ts",
   "validation": "src/lib/dataValidation.ts",
   "theme": "src/ui/theme.ts",
+  "rex": "src/ui/rex.ts",
     "constants": ["src/constants.js", "src/lib/constants.ts"]
   },
   "tags": [
@@ -33,11 +34,12 @@
     {
       "id": "ui.framework",
       "label": "Unified UI helpers and registry",
-      "files": ["src/lib/ui.ts", "src/main.js", "src/lib/inventory.ts"],
+      "files": ["src/lib/ui.ts", "src/main.js", "src/lib/inventory.ts", "src/ui/rex.ts"],
       "anchors": [
         { "file": "src/lib/ui.ts", "contains": ["createModal", "addTitle", "export const UI"], "note": "Modal builder, title helper, UI registry" },
         { "file": "src/main.js", "contains": ["UI as UIRegistry", "openShopDialog", "openPauseMenu"], "note": "Using shared UI + gating" },
-        { "file": "src/lib/inventory.ts", "contains": ["showInventory", "hideInventory"], "note": "Inventory modal + registry open/close" }
+        { "file": "src/lib/inventory.ts", "contains": ["showInventory", "hideInventory"], "note": "Inventory modal + registry open/close" },
+        { "file": "src/ui/rex.ts", "contains": ["showPauseMenuRex", "makeDialog", "makeTextButton"], "note": "Rex UI wrappers" }
       ]
     },
     {

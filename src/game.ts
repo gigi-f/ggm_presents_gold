@@ -1,4 +1,9 @@
 import Phaser from 'phaser';
+// Rex UI plugin (global plugin provides scene.rexUI factories)
+// We load it as a global plugin so it's available in all scenes
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import RexUIPlugin from 'phaser3-rex-plugins/templates/ui/ui-plugin.js';
 import { MainScene } from './main.js';
 import { UIScene } from './scenes/UIScene.js';
 import { TestScene } from './scenes/TestScene.js';
@@ -37,6 +42,11 @@ const config = {
   },
   loader: {
     maxParallelDownloads: 10
+  },
+  plugins: {
+    global: [
+      { key: 'rexUI', plugin: RexUIPlugin, start: true }
+    ]
   }
 };
 
