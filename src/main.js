@@ -1249,6 +1249,7 @@ export class MainScene extends Phaser.Scene {
       try {
         const data = {
           v: 1,
+          worldSeed: this.worldSeed >>> 0,
           map: this.currentMap,
           visited: Array.from(this.visitedMaps || []),
           mazeLayouts: (() => {
@@ -1291,6 +1292,8 @@ export class MainScene extends Phaser.Scene {
         if (!raw) { console.log('No save found'); return; }
         const data = JSON.parse(raw);
         if (!data || data.v !== 1) { console.log('Unknown save version'); return; }
+  // World seed (optional in older saves)
+  if (Number.isFinite(data.worldSeed)) this.worldSeed = data.worldSeed >>> 0;
         // Map + visited
         this.currentMap = data.map ?? this.currentMap;
         // Restore visited tiles if present

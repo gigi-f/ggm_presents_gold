@@ -413,15 +413,22 @@ function getEffectiveEdgeHalfWidth(scene: any, mapId: any, doorId: any, doorData
 
 export function createMapObjects(scene: any, options: any = {}) {
   scene.occupiedCells.clear();
+  // World base layer
   if (!options.preserveExistingWorld && scene.worldLayer) scene.worldLayer.destroy(true);
   if (!options.buildIntoExistingWorldLayer || !scene.worldLayer) scene.worldLayer = scene.add.container(0, 0);
+  // World overlay layer (above player/enemies)
+  if (!options.preserveExistingWorld && scene.worldOverlayLayer) scene.worldOverlayLayer.destroy(true);
+  if (!options.buildIntoExistingWorldOverlayLayer || !scene.worldOverlayLayer) scene.worldOverlayLayer = scene.add.container(0, 0);
+  try { scene.worldOverlayLayer.setDepth(5); } catch {}
   scene.activeDoors = {};
   if (!scene.boundaryRocks) scene.boundaryRocks = scene.add.group();
   if (!scene.treeTrunks) scene.treeTrunks = scene.add.group();
   if (!scene.buildingWalls) scene.buildingWalls = scene.add.group();
   if (!scene.enemiesGroup) scene.enemiesGroup = scene.add.group();
   if (!scene.terrainZones) scene.terrainZones = scene.add.group();
+  if (!scene.tallGrassSensors) scene.tallGrassSensors = scene.add.group();
   if (scene.terrainZones) scene.terrainZones.clear(true, true);
+  if (!options.preserveExistingWorld && scene.tallGrassSensors) scene.tallGrassSensors.clear(true, true);
   if (scene.buildingWalls) { scene.buildingWalls.clear(true, true); }
   if (scene.enemiesGroup && !options.preserveEnemies) { scene.enemiesGroup.clear(true, true); }
   if (!options.preserveExistingWorld) {
@@ -619,6 +626,25 @@ export function createMapObjects(scene: any, options: any = {}) {
     scene.physics.add.overlap(scene.player, scene.terrainZones, applySlow, null, scene);
   }
 
+  // Tall grass rustle overlaps (player and enemies)
+  if (scene.tallGrassSensors) {
+    const RUSTLE_COOLDOWN = 250; // ms per sensor
+    const rustle = (_entity: any, sensor: any) => {
+      const now = scene.time.now | 0;
+      if (sensor.lastRustleAt && now - sensor.lastRustleAt < RUSTLE_COOLDOWN) return;
+      sensor.lastRustleAt = now;
+      try { spawnGrassRustle(scene, sensor.x, sensor.y); } catch {}
+    };
+    try { scene.physics.add.overlap(scene.player, scene.tallGrassSensors, rustle, null, scene); } catch {}
+    if (scene.enemiesGroup) {
+      try { scene.physics.add.overlap(scene.enemiesGroup, scene.tallGrassSensors, rustle, null, scene); } catch {}
+    }
+  }
+
+  // Ensure a persistent worldSeed exists before biome content so terrains are seeded per save
+  if (!Number.isFinite(scene.worldSeed)) {
+    scene.worldSeed = (Math.random() * 0xFFFFFFFF) >>> 0;
+  }
   try { generateBiomeContent(scene); } catch (e) { console.warn('Biome generation failed:', e); }
 
   if (scene.gridVisible) createGridVisualization(scene);
@@ -701,6 +727,105 @@ export function createTerrainZoneFromCells(scene: any, cells: Array<{gx:number;g
   (container as any).tiles = tileRects;
   if (scene.worldLayer) { try { scene.worldLayer.sendToBack(container); } catch {} }
   return container;
+}
+
+// Tall grass: purely visual, renders above characters; no physics or slow
+export function createTallGrassZone(scene: any, startGX: number, startGY: number, wTiles: number, hTiles: number, opts: any = {}) {
+  const cells: Array<{gx:number;gy:number}> = [];
+  for (let dx = 0; dx < wTiles; dx++) for (let dy = 0; dy < hTiles; dy++) cells.push({ gx: startGX + dx, gy: startGY + dy });
+  return createTallGrassZoneFromCells(scene, cells, opts);
+}
+
+export function createTallGrassZoneFromCells(scene: any, cells: Array<{gx:number;gy:number}>, opts: any = {}) {
+  if (!Array.isArray(cells) || cells.length === 0) return null;
+  const cs = scene.gridCellSize;
+  const rand = typeof opts.rand === 'function' ? opts.rand : Math.random;
+  const occHas = (gx: number, gy: number) => !!scene.occupiedCells && scene.occupiedCells.has(`${gx},${gy}`);
+  const drawCells = cells.filter(({ gx, gy }) => !occHas(gx, gy));
+  if (drawCells.length === 0) return null;
+
+  const container = scene.add.container(0, 0);
+  // Above player/enemies and most ground props
+  container.setDepth(5);
+  if (scene.worldOverlayLayer) scene.worldOverlayLayer.add(container); else if (scene.worldLayer) scene.worldLayer.add(container);
+
+  // Single graphics for all blades to keep object count low
+  const g = scene.add.graphics();
+  g.setDepth(5);
+  // Optional base tint per tile for subtle grass density
+  for (const { gx, gy } of drawCells) {
+    const { x, y } = gridToWorld(scene, gx, gy);
+    // light background hint (very subtle)
+    if (opts.baseFill !== false) {
+      const alpha = 0.10 + rand() * 0.05;
+      g.fillStyle(0x2f6b2f, alpha);
+      g.fillRect(Math.round(x - cs / 2), Math.round(y - cs / 2), cs, cs);
+    }
+    // Draw blades: 6-10 per tile, short vertical-ish lines with slight sway
+    const blades = 6 + Math.floor(rand() * 5);
+    for (let i = 0; i < blades; i++) {
+      const bx = x - cs / 2 + 3 + rand() * (cs - 6);
+      const by = y + cs / 2 - 2 - rand() * (cs - 6);
+      const h = 6 + rand() * 10; // blade height
+      const sway = (rand() - 0.5) * 4;
+      const color = rand() < 0.5 ? 0x69b36b : 0x4f9251;
+      g.lineStyle(1, color, 0.95);
+      g.beginPath();
+      g.moveTo(Math.round(bx), Math.round(by));
+      g.lineTo(Math.round(bx + sway), Math.round(by - h));
+      g.strokePath();
+      // occasional seed head
+      if (rand() < 0.12) {
+        g.fillStyle(0xaed39f, 0.9);
+        g.fillRect(Math.round(bx + sway) - 1, Math.round(by - h) - 1, 2, 2);
+      }
+    }
+  }
+  container.add(g);
+
+  // Add invisible overlap sensors for rustle; keep in a group for physics overlap
+  if (scene.tallGrassSensors) {
+    for (const { gx, gy } of drawCells) {
+      if (scene.occupiedCells && scene.occupiedCells.has(`${gx},${gy}`)) continue;
+      const { x, y } = gridToWorld(scene, gx, gy);
+      const sensor = scene.add.rectangle(x, y, cs, cs, 0x00ff00, 0.001);
+      scene.physics.add.existing(sensor);
+      sensor.body.setAllowGravity(false);
+      sensor.body.setImmovable(true);
+      sensor.body.setCircle?.(undefined);
+      sensor.isTallGrassSensor = true;
+      scene.tallGrassSensors.add(sensor);
+      // Sensors are logic-only; attach to base worldLayer so they scroll with map
+      if (scene.worldLayer) scene.worldLayer.add(sensor);
+    }
+  }
+  return container;
+}
+
+// Quick rustle VFX: brief lines flicker to simulate movement in grass
+export function spawnGrassRustle(scene: any, x: number, y: number) {
+  const g = scene.add.graphics();
+  const life = 180; // ms
+  const draw = () => {
+    g.clear();
+    // 6 random flicker strokes around center
+    for (let i = 0; i < 6; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const len = 4 + Math.random() * 8;
+      const dx = Math.cos(angle) * len;
+      const dy = Math.sin(angle) * len;
+      g.lineStyle(1, 0xaed39f, 0.9);
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + dx, y + dy);
+      g.strokePath();
+    }
+  };
+  draw();
+  // Place in overlay above characters
+  try { scene.worldOverlayLayer?.add(g); } catch {}
+  g.setDepth(4);
+  scene.tweens.add({ targets: g, alpha: 0, duration: life, onComplete: () => { try { g.destroy(); } catch {} } });
 }
 
 export function getEdgeEntranceCells(scene: any) {

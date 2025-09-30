@@ -5,7 +5,7 @@
 */
 import { MAP_IDS, type MapId } from './constants';
 import * as Enemies from './enemies';
-import { getEdgeEntranceCells, createTerrainZoneFromCells } from './world';
+import { getEdgeEntranceCells, createTerrainZoneFromCells, createTallGrassZoneFromCells } from './world';
 
 export type BiomeType = 'forest' | 'plains' | 'desert';
 
@@ -62,9 +62,20 @@ export function generateBiomeContent(scene: any): void {
   // Also avoid the exact door cell positions (building doors, etc.)
   for (const d of Object.values(doors)) bufferCells.add(`${(d as any).gridX},${(d as any).gridY}`);
 
-  // Seed RNG by map id for determinism across runs
-  const seed = (typeof scene.currentMap === 'number' ? scene.currentMap : String(scene.currentMap).split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0)) + 12345;
-  const rand = mulberry32(seed);
+  // Seed RNG by save-specific world seed + map id so each save has different terrains
+  // Determine or create a persistent world seed on the scene (saved via saveGame)
+  let worldSeed: number = (scene.worldSeed ?? scene.saveSeed ?? scene.biomeSeed) >>> 0;
+  if (!Number.isFinite(worldSeed)) {
+    // Create a random 32-bit seed and stash it; saveGame should persist it
+    worldSeed = (Math.random() * 0xFFFFFFFF) >>> 0;
+    scene.worldSeed = worldSeed;
+  }
+  const mapIdSeed = (typeof scene.currentMap === 'number'
+    ? scene.currentMap
+    : String(scene.currentMap).split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0)) >>> 0;
+  // Mix seeds (XOR + golden ratio constant) to avoid simple collisions
+  const mixed = (worldSeed ^ ((mapIdSeed + 0x9E3779B9) >>> 0)) >>> 0;
+  const rand = mulberry32(mixed);
 
   // Helper to try place an object avoiding occupied & door cells (kept for future prop placement)
   // const tryPlace = (gx: number, gy: number, type: string, group?: any, data?: any): any => {
@@ -170,6 +181,43 @@ export function generateBiomeContent(scene: any): void {
     // Tree props removed: maze walls now provide overworld obstacles
     // Enemies: occasional slime
     try { Enemies.spawnSlimeAtGrid(scene, 2 + Math.floor(rand() * (Wg - 4)), 2 + Math.floor(rand() * (Hg - 4)), { speed: 58 }); } catch {}
+    // Tall grass patches: purely visual, render above to partially obscure characters
+    // 2-4 patches per map, sizes 3..6 wide and 2..4 high, with organic tails similar to terrain zones
+    const grassPatches = 2 + Math.floor(rand() * 3);
+    const occHas = (gx: number, gy: number) => !!scene.occupiedCells && scene.occupiedCells.has(`${gx},${gy}`);
+    for (let i = 0; i < grassPatches; i++) {
+      const w = 3 + Math.floor(rand() * 4); // 3..6
+      const h = 2 + Math.floor(rand() * 3); // 2..4
+      const gx = 1 + Math.floor(rand() * (Wg - w - 2));
+      const gy = 1 + Math.floor(rand() * (Hg - h - 2));
+      // Build cells and add a couple of tails
+      let cells: TerrainCell[] = [];
+      for (let ix = 0; ix < w; ix++) for (let iy = 0; iy < h; iy++) {
+        const cx = gx + ix, cy = gy + iy;
+        if (!occHas(cx, cy)) cells.push({ gx: cx, gy: cy });
+      }
+      const tails = 1 + Math.floor(rand() * 3);
+      const addIf = (x: number, y: number) => {
+        if (x < 1 || y < 1 || x >= Wg - 1 || y >= Hg - 1) return;
+        const k = `${x},${y}`; if (bufferCells.has(k)) return;
+        if (occHas(x, y)) return;
+        if (!cells.some(c => c.gx === x && c.gy === y)) cells.push({ gx: x, gy: y });
+      };
+      for (let t = 0; t < tails; t++) {
+        const from = cells[(rand() * cells.length) | 0];
+        const dir = (rand() * 4) | 0;
+        const dx = [1, -1, 0, 0][dir];
+        const dy = [0, 0, 1, -1][dir];
+        addIf(from.gx + dx, from.gy + dy);
+      }
+      // Avoid entrance buffers entirely
+      let ok = true;
+      for (const c of cells) { if (bufferCells.has(`${c.gx},${c.gy}`)) { ok = false; break; } }
+      // If patch collapsed due to occupancy filtering, skip
+      if (ok && cells.length < 2) ok = false;
+      if (!ok) continue;
+      try { createTallGrassZoneFromCells(scene, cells, { rand }); } catch {}
+    }
     // Add wolves only on non-starting plains maps to avoid overwhelming new players
     if (scene.currentMap !== MAP_IDS.OVERWORLD_01) {
       const wolfCount = 1 + (rand() < 0.5 ? 1 : 0);

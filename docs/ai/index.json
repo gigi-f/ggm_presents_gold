@@ -57,6 +57,15 @@
       ]
     },
     {
+      "id": "world.terrain",
+      "label": "Terrain & overlays",
+      "files": ["src/lib/world.ts", "src/lib/biomes.ts"],
+      "anchors": [
+        { "file": "src/lib/world.ts", "contains": ["createTerrainZoneFromCells", "createTallGrassZoneFromCells"], "note": "Slowing terrain + non-blocking tall grass overlay" },
+        { "file": "src/lib/biomes.ts", "contains": ["Tall grass patches"], "note": "Plains biome grass generation (seeded)" }
+      ]
+    },
+    {
       "id": "mechanics.buildings",
       "label": "Procedural buildings & collisions",
       "files": ["src/lib/buildings.js"],

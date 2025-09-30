@@ -55,7 +55,10 @@ export function scrollTransitionToMap(scene: any, direction: 'left'|'right'|'up'
   }
 
   const oldLayer = scene.worldLayer;
+  const oldOverlay = scene.worldOverlayLayer;
   const newLayer = scene.add.container(0, 0);
+  const newOverlay = scene.add.container(0, 0);
+  try { newOverlay.setDepth(5); } catch {}
 
   // Switch current map now
   const targetColor = scene.maps[newMapId].color;
@@ -66,19 +69,21 @@ export function scrollTransitionToMap(scene: any, direction: 'left'|'right'|'up'
 
   // Build new map into newLayer; preserve enemies so persistent ones can be rehomed
   scene.worldLayer = newLayer;
-  scene.createMapObjects({ preserveExistingWorld: true, buildIntoExistingWorldLayer: true, preserveEnemies: true });
+  scene.worldOverlayLayer = newOverlay;
+  scene.createMapObjects({ preserveExistingWorld: true, buildIntoExistingWorldLayer: true, buildIntoExistingWorldOverlayLayer: true, preserveEnemies: true });
 
   // Position layers
   let toX = 0, toY = 0;
   const W = scene.worldPixelWidth, H = scene.worldPixelHeight;
-  if (direction === 'right') { newLayer.x = W; oldLayer.x = 0; toX = -W; }
-  else if (direction === 'left') { newLayer.x = -W; oldLayer.x = 0; toX = W; }
-  else if (direction === 'down') { newLayer.y = H; oldLayer.y = 0; toY = -H; }
-  else if (direction === 'up') { newLayer.y = -H; oldLayer.y = 0; toY = H; }
+  if (direction === 'right') { newLayer.x = W; newOverlay.x = W; oldLayer.x = 0; oldOverlay && (oldOverlay.x = 0); toX = -W; }
+  else if (direction === 'left') { newLayer.x = -W; newOverlay.x = -W; oldLayer.x = 0; oldOverlay && (oldOverlay.x = 0); toX = W; }
+  else if (direction === 'down') { newLayer.y = H; newOverlay.y = H; oldLayer.y = 0; oldOverlay && (oldOverlay.y = 0); toY = -H; }
+  else if (direction === 'up') { newLayer.y = -H; newOverlay.y = -H; oldLayer.y = 0; oldOverlay && (oldOverlay.y = 0); toY = H; }
 
   scene.tweens.add({ targets: newLayer, x: 0, y: 0, duration: 750, ease: 'Sine.easeInOut' });
+  scene.tweens.add({ targets: newOverlay, x: 0, y: 0, duration: 750, ease: 'Sine.easeInOut' });
   scene.tweens.add({
-    targets: oldLayer,
+    targets: [oldLayer, oldOverlay].filter(Boolean),
     x: toX,
     y: toY,
     duration: 750,
@@ -96,9 +101,12 @@ export function scrollTransitionToMap(scene: any, direction: 'left'|'right'|'up'
           }
         }
       }
-      oldLayer.destroy(true);
+      try { oldLayer.destroy(true); } catch {}
+      try { oldOverlay?.destroy(true); } catch {}
       newLayer.x = 0; newLayer.y = 0;
+      newOverlay.x = 0; newOverlay.y = 0;
       scene.worldLayer = newLayer;
+      scene.worldOverlayLayer = newOverlay;
       endTransition(scene);
     }
   });
