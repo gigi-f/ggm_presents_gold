@@ -4,6 +4,8 @@
  - See: docs/ai/index.json
 */
 
+import { rngFor } from './rng';
+
 function gridToWorld(scene: any, gx: number, gy: number) {
   const cs = scene.gridCellSize;
   return { x: gx * cs + cs / 2, y: gy * cs + cs / 2 };
@@ -44,6 +46,9 @@ export function generateMazeWalls(scene: any, opts: any = {}) {
   const isOverworld = scene.maps?.[scene.currentMap]?.type === 'overworld';
   if (!isOverworld) return;
   const biome = opts.biome || scene.biome || 'plains';
+  // Central deterministic RNG for maze generation
+  // Mix namespace with map id to keep layouts stable per save+map
+  const rng = rngFor(scene, 'maze');
 
   if (!scene.mazeWalls) scene.mazeWalls = scene.add.group();
   else scene.mazeWalls.clear(true, true);
@@ -52,10 +57,15 @@ export function generateMazeWalls(scene: any, opts: any = {}) {
   const mapKey = scene.currentMap;
   scene._mazeLayouts = scene._mazeLayouts || {};
   const cached = scene._mazeLayouts[mapKey];
-  const mapIdSeed = (typeof mapKey === 'number') ? mapKey : String(mapKey).split('').reduce((a,c)=>a + c.charCodeAt(0), 0);
+  // Per-cell stable variation derived from rng and cell coordinates
+  // We avoid Math.random and local hashes; this blends rng value with coordinates
+  const baseR = rng();
   const cellRand = (gx: number, gy: number) => {
-    let x = (mapIdSeed * 374761393) ^ (gx * 668265263) ^ (gy * 2147483647);
-    x = (x ^ (x >>> 13)) >>> 0; return (x % 1000) / 1000;
+    // Cheap mix function to spread baseR with coordinates deterministically
+    let x = Math.imul((gx + 0x9E37) ^ (gy + 0x79B9), 0x85EBCA6B) ^ Math.floor(baseR * 0xFFFFFFFF);
+    x ^= (x >>> 13); x = Math.imul(x, 0xC2B2AE35);
+    x ^= (x >>> 16);
+    return ((x >>> 0) % 1000) / 1000;
   };
   if (Array.isArray(cached) && cached.length > 0) {
     const blocked = new Set<string>();
@@ -162,7 +172,7 @@ export function generateMazeWalls(scene: any, opts: any = {}) {
   };
   for (const [sx, sy] of seeds) { carve(sx, sy); addEdges(sx, sy); }
   while (frontier.length) {
-    const i = (Math.random() * frontier.length) | 0;
+  const i = (rng() * frontier.length) | 0;
     const e = frontier.splice(i, 1)[0];
     if (has(e.tx, e.ty)) continue;
     const mx = e.fx + Math.sign(e.tx - e.fx);
@@ -211,7 +221,7 @@ export function generateMazeWalls(scene: any, opts: any = {}) {
 
   const interiorArea = (maxGX - minGX + 1) * (maxGY - minGY + 1);
   const target = Math.max(24, Math.floor(interiorArea * 0.12));
-  for (let i = candidates.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [candidates[i], candidates[j]] = [candidates[j], candidates[i]]; }
+  for (let i = candidates.length - 1; i > 0; i--) { const j = (rng() * (i + 1)) | 0; [candidates[i], candidates[j]] = [candidates[j], candidates[i]]; }
 
   const placedWallsSet = new Set<string>();
   const placedWalls: Array<[number, number]> = [];
@@ -220,7 +230,7 @@ export function generateMazeWalls(scene: any, opts: any = {}) {
   const inInteriorSafe = (gx: number, gy: number) => gx >= minGX + 2 && gx <= maxGX - 2 && gy >= minGY + 2 && gy <= maxGY - 2;
   const addWall = (gx: number, gy: number, styleR: number | null = null) => {
     const wp = gridToWorld(scene, gx, gy);
-    const rRaw = (typeof styleR === 'number') ? styleR : Math.random();
+  const rRaw = (typeof styleR === 'number') ? styleR : rng();
     const r = rRaw + ((biome === 'forest') ? 0.25 : 0);
     let obj: any;
     if (r < 0.5) {
@@ -290,7 +300,7 @@ export function generateMazeWalls(scene: any, opts: any = {}) {
   for (const c of candidates) {
     if (wallsCount >= target) break;
     if (++attempts > candidates.length * 2) break;
-    const base = shapes[(Math.random()*shapes.length)|0];
+  const base = shapes[(rng()*shapes.length)|0];
     const variants: Array<Array<[number, number]>> = [];
     const rots = [[1,0,0,1],[0,1,-1,0],[-1,0,0,-1],[0,-1,1,0]] as const;
     for (const [a,b,c2,d] of rots) {

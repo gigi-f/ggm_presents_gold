@@ -6,25 +6,15 @@
 import { MAP_IDS, type MapId } from './constants';
 import * as Enemies from './enemies';
 import { getEdgeEntranceCells, createTerrainZoneFromCells, createTallGrassZoneFromCells } from './world';
+import { rngFor } from './rng';
 
 export type BiomeType = 'forest' | 'plains' | 'desert';
-
-type RandomFunction = () => number;
 
 interface TerrainCell {
   gx: number;
   gy: number;
 }
 
-// Simple deterministic PRNG (mulberry32)
-function mulberry32(seed: number): RandomFunction {
-  return function(): number {
-    let t = seed += 0x6D2B79F5;
-    t = Math.imul(t ^ t >>> 15, t | 1);
-    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-}
 
 export function getBiomeForMap(scene: any, mapId?: MapId): BiomeType {
   const id = mapId ?? scene.currentMap;
@@ -62,20 +52,8 @@ export function generateBiomeContent(scene: any): void {
   // Also avoid the exact door cell positions (building doors, etc.)
   for (const d of Object.values(doors)) bufferCells.add(`${(d as any).gridX},${(d as any).gridY}`);
 
-  // Seed RNG by save-specific world seed + map id so each save has different terrains
-  // Determine or create a persistent world seed on the scene (saved via saveGame)
-  let worldSeed: number = (scene.worldSeed ?? scene.saveSeed ?? scene.biomeSeed) >>> 0;
-  if (!Number.isFinite(worldSeed)) {
-    // Create a random 32-bit seed and stash it; saveGame should persist it
-    worldSeed = (Math.random() * 0xFFFFFFFF) >>> 0;
-    scene.worldSeed = worldSeed;
-  }
-  const mapIdSeed = (typeof scene.currentMap === 'number'
-    ? scene.currentMap
-    : String(scene.currentMap).split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0)) >>> 0;
-  // Mix seeds (XOR + golden ratio constant) to avoid simple collisions
-  const mixed = (worldSeed ^ ((mapIdSeed + 0x9E3779B9) >>> 0)) >>> 0;
-  const rand = mulberry32(mixed);
+  // Deterministic RNG stream for biome content
+  const rand = rngFor(scene, 'biomes');
 
   // Helper to try place an object avoiding occupied & door cells (kept for future prop placement)
   // const tryPlace = (gx: number, gy: number, type: string, group?: any, data?: any): any => {

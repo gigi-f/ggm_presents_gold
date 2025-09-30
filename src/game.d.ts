@@ -1,3 +1,3 @@
-declare module './main.js' { export class MainScene {} }
-declare module './scenes/UIScene.js' { export class UIScene {} }
-declare module './scenes/TestScene.js' { export class TestScene {} }
+declare module 'main' { export class MainScene {} }
+declare module 'scenes/UIScene' { export class UIScene {} }
+declare module 'scenes/TestScene' { export class TestScene {} }

@@ -6,26 +6,7 @@
 
 // Procedural building generator: creates a composite building around a door grid position
 // Uses primitive shapes (rectangles, graphics, text) and adds collision walls to scene.buildingWalls
-
-// Lightweight deterministic RNG (mulberry32) and a simple string hash to seed it
-function hashString(str: string) {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-function mulberry32(a: number) {
-  return function() {
-    let t = a += 0x6D2B79F5;
-    t = Math.imul(t ^ t >>> 15, t | 1);
-    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-}
-function rngChoice<T>(rng: () => number, arr: T[]): T { return arr[Math.floor(rng() * arr.length)]; }
-function rngRangeInt(rng: () => number, min: number, maxInclusive: number) { return Math.floor(rng() * (maxInclusive - min + 1)) + min; }
+import { rngFor, choice as rngChoice, randInt as rngRangeInt, hashStr } from './rng';
 
 // Basic style catalog (can be expanded/per-biome)
 const STYLES: any = {
@@ -61,9 +42,14 @@ export function createShopBuilding(scene: any, doorGridX: number, doorGridY: num
   const gridH = scene.gridHeight;
 
   // Deterministic RNG from seed (map + door) unless overridden
-  const defaultSeedStr = `${scene.currentMap}:${doorGridX},${doorGridY}`;
-  const seed = (typeof opts.seed === 'number') ? opts.seed : hashString(String(opts.seed ?? defaultSeedStr));
-  const rng = mulberry32(seed);
+  // Use central RNG mixed with map and door coords for stability across saves
+  const ns = `buildings:${doorGridX},${doorGridY}`;
+  const rng = (typeof opts.seed !== 'undefined')
+    ? (() => {
+        const ws = (typeof opts.seed === 'number') ? (opts.seed >>> 0) : hashStr(String(opts.seed));
+        return rngFor({ worldSeed: ws, currentMap: scene.currentMap }, ns);
+      })()
+    : rngFor(scene, ns);
 
   const bType = (opts.type && STYLES[opts.type]) ? opts.type : 'shop';
   const style = STYLES[bType];

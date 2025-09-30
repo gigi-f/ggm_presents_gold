@@ -1,3 +1,4 @@
+import { rngFor } from './rng';
 /*
  AI-INDEX
  - Tags: mechanics.doors, mechanics.economy, mechanics.buildings
@@ -805,13 +806,14 @@ export function createTallGrassZoneFromCells(scene: any, cells: Array<{gx:number
 // Quick rustle VFX: brief lines flicker to simulate movement in grass
 export function spawnGrassRustle(scene: any, x: number, y: number) {
   const g = scene.add.graphics();
+  const r = rngFor(scene, 'rustle');
   const life = 180; // ms
   const draw = () => {
     g.clear();
     // 6 random flicker strokes around center
     for (let i = 0; i < 6; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const len = 4 + Math.random() * 8;
+      const angle = r() * Math.PI * 2;
+      const len = 4 + r() * 8;
       const dx = Math.cos(angle) * len;
       const dy = Math.sin(angle) * len;
       g.lineStyle(1, 0xaed39f, 0.9);

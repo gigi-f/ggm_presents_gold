@@ -1,7 +1,7 @@
 {
   "$schema": "./schema.json",
   "version": 1,
-  "updated": "2025-09-29",
+  "updated": "2025-09-30",
   "project": "Gold Hunter",
   "summary": "Top-down 2D action-adventure built with Phaser 3. AI index for quick code navigation.",
   "entryPoints": {
@@ -14,7 +14,10 @@
     "transitions": "src/lib/transitions.ts",
     "inventory": "src/lib/inventory.ts",
     "combat": "src/lib/combat.ts",
-    "economy": "src/lib/economy.ts",
+  "economy": "src/lib/economy.ts",
+  "rng": "src/lib/rng.ts",
+  "validation": "src/lib/dataValidation.ts",
+  "theme": "src/ui/theme.ts",
     "constants": ["src/constants.js", "src/lib/constants.ts"]
   },
   "tags": [
@@ -133,6 +136,32 @@
       ]
     }
     ,
+    {
+      "id": "engine.rng",
+      "label": "RNG service",
+      "files": ["src/lib/rng.ts"],
+      "anchors": [
+        { "file": "src/lib/rng.ts", "contains": ["rngFor", "mulberry32", "randInt"], "note": "Seeded PRNG streams per save/map/namespace" }
+      ]
+    }
+    ,
+    {
+      "id": "engine.validation",
+      "label": "Data validation",
+      "files": ["src/lib/dataValidation.ts", "src/data/schemas/items.schema.json", "src/data/schemas/maps.schema.json"],
+      "anchors": [
+        { "file": "src/lib/dataValidation.ts", "contains": ["validateItems", "validateMaps"], "note": "Ajv integration point" }
+      ]
+    }
+    ,
+    {
+      "id": "ui.theme",
+      "label": "Theme tokens",
+      "files": ["src/ui/theme.ts"],
+      "anchors": [
+        { "file": "src/ui/theme.ts", "contains": ["export const Theme"], "note": "Centralized UI colors, spacing, fonts" }
+      ]
+    },
     {
       "id": "ui.minimap",
       "label": "Mini-map overlay",
