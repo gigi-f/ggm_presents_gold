@@ -1,6 +1,22 @@
 declare module 'phaser' {
   const Phaser: any;
   export default Phaser;
+  
+  namespace Types {
+    namespace Physics {
+      namespace Arcade {
+        interface SpriteWithDynamicBody {
+          body: any;
+          setImmovable(value: boolean): this;
+          setDepth(depth: number): this;
+          destroy(): void;
+          x: number;
+          y: number;
+          [key: string]: any;
+        }
+      }
+    }
+  }
 }
 
 declare module 'vite' {
