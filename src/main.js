@@ -581,7 +581,43 @@ export class MainScene extends Phaser.Scene {
         this.time.delayedCall(50, () => {
           // Equip default starter weapon after UI is ready
           this.equipDefaultWeapon();
-          
+
+          // Add a second default weapon to the inventory (does not auto-equip)
+          try {
+            const secondWeapon = {
+              type: 'weapon',
+              subtype: 'basic',
+              name: 'Iron Shank',
+              color: this.getWeaponColor('basic'),
+              size: this.getWeaponSize('basic'),
+              swingDuration: this.getWeaponSwingDuration('basic')
+            };
+            this.addToInventory(secondWeapon);
+            this.collectedItems.meleeWeapon2 = true;
+          } catch (e) { console.error('Failed to add second weapon to starting inventory', e); }
+
+          // Add two shields to the inventory and mark them collected
+          try {
+            const shieldA = { type: 'shield', subtype: 'basic', name: 'Wooden Shield', color: this.getShieldColor('basic'), size: this.getShieldSize('basic') };
+            const shieldB = { type: 'shield', subtype: 'light', name: 'Buckler', color: this.getShieldColor('light'), size: this.getShieldSize('light') };
+            this.addToInventory(shieldA);
+            this.addToInventory(shieldB);
+            this.collectedItems.shield1 = true;
+            this.collectedItems.shield2 = true;
+            // Auto-equip one shield if none equipped
+            if (!this.equippedShield) this.equipShield(shieldA);
+          } catch (e) { console.error('Failed to add shields to starting inventory', e); }
+
+          // Add two consumable potions (health + stamina) and mark them collected
+          try {
+            const healthPotion = { type: 'consumable', name: 'Health Potion', healAmount: 25, description: 'Restores 25 HP' };
+            const staminaTonic = { type: 'consumable', name: 'Stamina Tonic', staminaAmount: 50, description: 'Restores 50 Stamina' };
+            this.addToInventory(healthPotion);
+            this.addToInventory(staminaTonic);
+            this.collectedItems.healthPotion1 = true;
+            this.collectedItems.staminaTonic1 = true;
+          } catch (e) { console.error('Failed to add potions to starting inventory', e); }
+
           // Force update the equipment HUD after a brief delay
           this.time.delayedCall(10, () => {
             this.updateEquipmentHUD();
