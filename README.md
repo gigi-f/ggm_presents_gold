@@ -1,4 +1,4 @@
-# Gold Hunter
+# GGM presents GOLD
 
 [![Play Now](https://img.shields.io/badge/Play%20Now-GitHub%20Pages-2ea44f?logo=github)](https://gigi-f.github.io/ggm_presents_gold/)
 
