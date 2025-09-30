@@ -10,12 +10,12 @@ import prospectorLeftPng from '../assets/sprites/prospector_left.png';
 import prospectorRightPng from '../assets/sprites/prospector_right.png';
 import prospectorUpPng from '../assets/sprites/prospector_up.png';
 import { MAP_IDS, DOOR_IDS, SCENES } from './lib/constants';
-import { getBiomeForMap } from './lib/biomes.js';
-import * as World from './lib/world.js';
+import { getBiomeForMap } from './lib/biomes';
+import * as World from './lib/world';
 import { beginTransition, endTransition, scrollTransitionToMap as scrollXfer } from './lib/transitions';
 import * as Inventory from './lib/inventory.js';
 import * as Combat from './lib/combat.js';
-import { initWallet, addToWallet, spendFromWallet, getItemPrice, getWalletTotal } from './lib/economy.js';
+import { initWallet, addToWallet, spendFromWallet, getItemPrice, getWalletTotal } from './lib/economy';
 // Using PNG sprites for the prospector in four directions
 import { updateEnemies } from './lib/enemies';
 import { createModal, addTitle, UI as UIRegistry } from './lib/ui';

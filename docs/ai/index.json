@@ -1,7 +1,7 @@
 {
   "$schema": "./schema.json",
   "version": 1,
-  "updated": "2025-09-28",
+  "updated": "2025-09-29",
   "project": "Gold Hunter",
   "summary": "Top-down 2D action-adventure built with Phaser 3. AI index for quick code navigation.",
   "entryPoints": {
@@ -9,12 +9,12 @@
     "mainScene": "src/main.js",
     "uiScene": "src/scenes/UIScene.js",
     "testScene": "src/scenes/TestScene.js",
-    "world": "src/lib/world.js",
+    "world": "src/lib/world.ts",
     "buildings": "src/lib/buildings.js",
-    "transitions": "src/lib/transitions.js",
-    "inventory": "src/lib/inventory.js",
-    "combat": "src/lib/combat.js",
-    "economy": "src/lib/economy.js",
+    "transitions": "src/lib/transitions.ts",
+    "inventory": "src/lib/inventory.ts",
+    "combat": "src/lib/combat.ts",
+    "economy": "src/lib/economy.ts",
     "constants": ["src/constants.js", "src/lib/constants.ts"]
   },
   "tags": [
@@ -30,11 +30,11 @@
     {
       "id": "ui.framework",
       "label": "Unified UI helpers and registry",
-      "files": ["src/lib/ui.js", "src/main.js", "src/lib/inventory.js"],
+      "files": ["src/lib/ui.ts", "src/main.js", "src/lib/inventory.ts"],
       "anchors": [
-        { "file": "src/lib/ui.js", "contains": ["createModal", "addTitle", "export const UI"], "note": "Modal builder, title helper, UI registry" },
+        { "file": "src/lib/ui.ts", "contains": ["createModal", "addTitle", "export const UI"], "note": "Modal builder, title helper, UI registry" },
         { "file": "src/main.js", "contains": ["UI as UIRegistry", "openShopDialog", "openPauseMenu"], "note": "Using shared UI + gating" },
-        { "file": "src/lib/inventory.js", "contains": ["showInventory", "hideInventory"], "note": "Inventory modal + registry open/close" }
+        { "file": "src/lib/inventory.ts", "contains": ["showInventory", "hideInventory"], "note": "Inventory modal + registry open/close" }
       ]
     },
     {
@@ -49,11 +49,11 @@
     {
       "id": "mechanics.doors",
       "label": "Door system & map transitions",
-      "files": ["src/lib/world.js", "src/lib/transitions.js"],
+      "files": ["src/lib/world.ts", "src/lib/transitions.ts"],
       "anchors": [
-        { "file": "src/lib/world.js", "contains": ["createDoorsForMap"], "note": "Door registry -> sensor creation & overlaps" },
-        { "file": "src/lib/world.js", "contains": ["enterBuilding", "exitBuilding", "handleEdgeExit"], "note": "Door callbacks" },
-        { "file": "src/lib/transitions.js", "contains": ["scrollTransitionToMap", "beginTransition", "endTransition"], "note": "Scroll tween, locks" }
+        { "file": "src/lib/world.ts", "contains": ["createDoorsForMap"], "note": "Door registry -> sensor creation & overlaps" },
+        { "file": "src/lib/world.ts", "contains": ["enterBuilding", "exitBuilding", "handleEdgeExit"], "note": "Door callbacks" },
+        { "file": "src/lib/transitions.ts", "contains": ["scrollTransitionToMap", "beginTransition", "endTransition"], "note": "Scroll tween, locks" }
       ]
     },
     {
@@ -68,9 +68,9 @@
     {
       "id": "mechanics.inventory",
       "label": "Inventory & equipment",
-      "files": ["src/lib/inventory.js", "src/main.js", "src/scenes/UIScene.js"],
+      "files": ["src/lib/inventory.ts", "src/main.js", "src/scenes/UIScene.js"],
       "anchors": [
-        { "file": "src/lib/inventory.js", "contains": ["addToInventory", "equipWeapon", "equipShield"], "note": "Core inventory ops" },
+        { "file": "src/lib/inventory.ts", "contains": ["addToInventory", "equipWeapon", "equipShield"], "note": "Core inventory ops" },
         { "file": "src/main.js", "contains": ["pickupMeleeWeapon", "pickupShield", "updateEquipmentHUD"], "note": "Scene glue" },
         { "file": "src/scenes/UIScene.js", "contains": ["updateWeaponDisplay", "updateShieldDisplay"], "note": "HUD equip icons" }
       ]
@@ -78,29 +78,29 @@
     {
       "id": "mechanics.combat",
       "label": "Combat (melee, shield)",
-      "files": ["src/lib/combat.js", "src/main.js"],
+      "files": ["src/lib/combat.ts", "src/main.js"],
       "anchors": [
-        { "file": "src/lib/combat.js", "contains": ["swingMeleeWeapon", "raiseShield", "lowerShield"], "note": "Combat helpers" },
+        { "file": "src/lib/combat.ts", "contains": ["swingMeleeWeapon", "raiseShield", "lowerShield"], "note": "Combat helpers" },
         { "file": "src/main.js", "contains": ["meleeWeaponSwinging", "shieldRaised"], "note": "State & event bindings" }
       ]
     },
     {
       "id": "mechanics.stamina",
       "label": "Stamina (regen, drains, HUD)",
-      "files": ["src/main.js", "src/scenes/UIScene.js", "src/lib/combat.js"],
+      "files": ["src/main.js", "src/scenes/UIScene.js", "src/lib/combat.ts"],
       "anchors": [
         { "file": "src/main.js", "contains": ["stamina", "staminaRegenPerSec", "updateStaminaBar"], "note": "Scene state + HUD push" },
         { "file": "src/scenes/UIScene.js", "contains": ["createStaminaBar", "updateStaminaBar"], "note": "HUD stamina bar" },
-        { "file": "src/lib/combat.js", "contains": ["Too exhausted to swing"], "note": "Swing costs stamina" }
+        { "file": "src/lib/combat.ts", "contains": ["Too exhausted to swing"], "note": "Swing costs stamina" }
       ]
     },
     {
       "id": "mechanics.economy",
       "label": "Economy (currencies, wallet, HUD)",
-      "files": ["src/lib/economy.js", "src/lib/world.js", "src/scenes/UIScene.js", "src/main.js"],
+      "files": ["src/lib/economy.ts", "src/lib/world.ts", "src/scenes/UIScene.js", "src/main.js"],
       "anchors": [
-        { "file": "src/lib/economy.js", "contains": ["CURRENCIES", "initWallet", "addToWallet"], "note": "Registry + wallet" },
-        { "file": "src/lib/world.js", "contains": ["placeObjectOnGrid", "spawnCurrency"], "note": "Currency objects & ids" },
+        { "file": "src/lib/economy.ts", "contains": ["CURRENCIES", "initWallet", "addToWallet"], "note": "Registry + wallet" },
+        { "file": "src/lib/world.ts", "contains": ["placeObjectOnGrid", "spawnCurrency"], "note": "Currency objects & ids" },
         { "file": "src/main.js", "contains": ["pickupCurrency", "initWallet"], "note": "Wallet wiring" },
         { "file": "src/scenes/UIScene.js", "contains": ["updateCurrency"], "note": "HUD totals & icons" }
       ]

@@ -1,5 +1,4 @@
 import Phaser from 'phaser';
-import { SCENES } from './lib/constants';
 import { MainScene } from './main.js';
 import { UIScene } from './scenes/UIScene.js';
 import { TestScene } from './scenes/TestScene.js';

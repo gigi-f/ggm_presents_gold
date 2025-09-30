@@ -4,8 +4,8 @@
  - See: docs/ai/index.json
 */
 import { MAP_IDS, type MapId } from './constants';
-import * as Enemies from './enemies.js';
-import { placeObjectOnGrid, getEdgeEntranceCells, createTerrainZone, createTerrainZoneFromCells } from './world.js';
+import * as Enemies from './enemies';
+import { getEdgeEntranceCells, createTerrainZoneFromCells } from './world';
 
 export type BiomeType = 'forest' | 'plains' | 'desert';
 
@@ -43,7 +43,7 @@ export function generateBiomeContent(scene: any): void {
   const biome = getBiomeForMap(scene, scene.currentMap);
 
   // Build a buffer around overworld edge entrances so props are at least two tiles away
-  const doors = scene.doorRegistry[scene.currentMap] || {};
+  const doors: Record<string, any> = scene.doorRegistry[scene.currentMap] || {};
   const edgeCells = getEdgeEntranceCells(scene);
   const bufferCells = new Set<string>();
   const csW = Math.floor(scene.worldPixelWidth / scene.gridCellSize);
@@ -60,22 +60,22 @@ export function generateBiomeContent(scene: any): void {
     }
   }
   // Also avoid the exact door cell positions (building doors, etc.)
-  for (const d of Object.values(doors)) bufferCells.add(`${d.gridX},${d.gridY}`);
+  for (const d of Object.values(doors)) bufferCells.add(`${(d as any).gridX},${(d as any).gridY}`);
 
   // Seed RNG by map id for determinism across runs
   const seed = (typeof scene.currentMap === 'number' ? scene.currentMap : String(scene.currentMap).split('').reduce((a: number, c: string) => a + c.charCodeAt(0), 0)) + 12345;
   const rand = mulberry32(seed);
 
-  // Helper to try place an object avoiding occupied & door cells
-  const tryPlace = (gx: number, gy: number, type: string, group?: any, data?: any): any => {
-    if (gx < 1 || gy < 1) return null;
-    if (bufferCells.has(`${gx},${gy}`)) return null;
-    if (!scene.isGridCellAvailable(gx, gy)) return null;
-    return placeObjectOnGrid(scene, gx, gy, type, group, data);
-  };
+  // Helper to try place an object avoiding occupied & door cells (kept for future prop placement)
+  // const tryPlace = (gx: number, gy: number, type: string, group?: any, data?: any): any => {
+  //   if (gx < 1 || gy < 1) return null;
+  //   if (bufferCells.has(`${gx},${gy}`)) return null;
+  //   if (!scene.isGridCellAvailable(gx, gy)) return null;
+  //   return placeObjectOnGrid(scene, gx, gy, type, group, data);
+  // };
   
   // Helper: try place terrain zone (doesn't occupy cells but avoid doors/buffers)
-  const tryTerrain = (gx: number, gy: number, w: number, h: number, type: string, opts: any = {}): any => {
+  const tryTerrain = (gx: number, gy: number, w: number, h: number, type: 'marsh'|'quicksand', opts: any = {}): any => {
     // Keep entire rect inside inner bounds
     if (gx < 1 || gy < 1) return null;
     if (gx + w > csW - 1 || gy + h > csH - 1) return null;

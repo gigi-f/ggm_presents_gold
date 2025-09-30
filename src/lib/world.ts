@@ -19,9 +19,7 @@ export function initializeGrid(scene: any) {
   scene.terrainZones = scene.add ? scene.add.group() : null;
 }
 
-export function isInEdgeGap(scene: any, index: number, skipSet: Set<number>) {
-  return skipSet?.has(index) || false;
-}
+export function isInEdgeGap(_scene: any, index: number, skipSet: Set<number>) { return skipSet?.has(index) || false; }
 
 export function isGridCellAvailable(scene: any, gridX: number, gridY: number) {
   if (gridX < 1 || gridX >= scene.gridWidth - 1 || gridY < 1 || gridY >= scene.gridHeight - 1) return false;
@@ -106,7 +104,7 @@ export function findNearestFreeWorldPosition(scene: any, desiredX: number, desir
   return gridToWorld(scene, fallbackGX, fallbackGY);
 }
 
-export function createDoorContainer(scene: any, worldX: number, worldY: number, kind: string = 'entrance', meta: any = {}) {
+export function createDoorContainer(scene: any, worldX: number, worldY: number, kind: string = 'entrance', _meta: any = {}) {
   const container = scene.add.container(worldX, worldY);
   container.setDepth(100);
   container.isDoorContainer = true;
@@ -321,7 +319,7 @@ export function createDoorsForMap(scene: any) {
         if (doorData.type === 'building_entrance') {
           scene.physics.add.overlap(scene.player, sensor, scene.enterBuilding, () => !scene.transitionLock, scene);
           if (doorId === DOOR_IDS.SHOP_DOOR_01 && scene.currentMap === MAP_IDS.OVERWORLD_01) {
-            createShopBuilding(scene, doorData.gridX, doorData.gridY, { seed: `${scene.currentMap}:${doorId}` });
+            createShopBuilding(scene, doorData.gridX, doorData.gridY);
             if (scene.worldLayer && doorContainer) {
               try { scene.worldLayer.bringToTop(doorContainer); } catch {}
             }
@@ -613,7 +611,7 @@ export function createMapObjects(scene: any, options: any = {}) {
   if (scene.goldIngot1) scene.physics.add.overlap(scene.player, scene.goldIngot1, scene.pickupGoldIngot, null, scene);
 
   if (scene.terrainZones) {
-    const applySlow = (player: any, zone: any) => {
+  const applySlow = (_player: any, zone: any) => {
       const f = Number.isFinite(zone.slowFactor) ? zone.slowFactor : 0.8;
       scene._terrainSlowFactor = Math.min(scene._terrainSlowFactor || 1, f);
       scene._terrainSlowUntil = scene.time.now + 100;
@@ -627,12 +625,12 @@ export function createMapObjects(scene: any, options: any = {}) {
 }
 
 export function createTerrainZone(scene: any, startGX: number, startGY: number, wTiles: number, hTiles: number, type: 'marsh'|'quicksand' = 'marsh', opts: any = {}) {
-  const cs = scene.gridCellSize;
-  const center = gridToWorld(scene, startGX, startGY);
-  const width = wTiles * cs;
-  const height = hTiles * cs;
-  const cx = center.x + (wTiles - 1) * cs / 2;
-  const cy = center.y + (hTiles - 1) * cs / 2;
+  // const cs = scene.gridCellSize;
+  // const center = gridToWorld(scene, startGX, startGY);
+  // const width = wTiles * cs;
+  // const height = hTiles * cs;
+  // const cx = center.x + (wTiles - 1) * cs / 2;
+  // const cy = center.y + (hTiles - 1) * cs / 2;
   const styles: any = {
     marsh: { color: 0x3a6b5a, alpha: 0.35, stroke: 0x88d3b0, slowFactor: 0.9 },
     quicksand: { color: 0xD2B48C, alpha: 0.4, stroke: 0x8b6f47, slowFactor: 0.5 },

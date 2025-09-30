@@ -7,6 +7,9 @@ declare module 'vite' {
   export function defineConfig(config: any): any;
 }
 
+// Ambient module shims for JS modules consumed by TS
+// Note: local JS modules are typed via colocated .d.ts files in src/
+
 // Phaser types for common game objects
 declare global {
   namespace Phaser {
