@@ -15,7 +15,7 @@ import * as World from './lib/world';
 import { beginTransition, endTransition, scrollTransitionToMap as scrollXfer } from './lib/transitions';
 import * as Inventory from './lib/inventory.js';
 import * as Combat from './lib/combat.js';
-import { initWallet, addToWallet, spendFromWallet, getItemPrice, getWalletTotal } from './lib/economy';
+import { initWallet, addToWallet, spendFromWallet, getItemPrice, getWalletTotal, getWeaponDisplayLength } from './lib/economy';
 // Using PNG sprites for the prospector in four directions
 import { updateEnemies } from './lib/enemies';
 import { createModal, addTitle, UI as UIRegistry } from './lib/ui';
@@ -528,12 +528,17 @@ export class MainScene extends Phaser.Scene {
     }
 
     getWeaponSize(weaponType) {
+      try {
+        const s = getWeaponDisplayLength(weaponType);
+        if (s && typeof s.width === 'number') return s;
+      } catch (e) {}
+      // Fallback sizes
       switch (weaponType) {
-        case 'starter': return { width: 14, height: 3 }; // Small weak weapon
-        case 'basic': return { width: 20, height: 4 };
-        case 'strong': return { width: 24, height: 5 };
+        case 'starter': return { width: 6, height: 3 };
+        case 'basic': return { width: 20, height: 3 };
+        case 'strong': return { width: 24, height: 3 };
         case 'fast': return { width: 16, height: 3 };
-        default: return { width: 20, height: 4 };
+        default: return { width: 6, height: 3 };
       }
     }
 
@@ -558,7 +563,7 @@ export class MainScene extends Phaser.Scene {
 
     getShieldSize(shieldType) {
       switch (shieldType) {
-        case 'basic': return { width: 12, height: 16 };
+        case 'basic': return { width: 4, height: 8 };
         case 'strong': return { width: 14, height: 18 };
         case 'light': return { width: 10, height: 14 };
         default: return { width: 12, height: 16 };
@@ -577,6 +582,14 @@ export class MainScene extends Phaser.Scene {
         this.load.image('prospector_right', prospectorRightPng);
         this.load.image('prospector_up', prospectorUpPng);
       } catch {}
+      // Preload optional shopkeeper art (if present in assets)
+      try {
+        // webpack/vite asset import not required here; path relative to assets folder in bundler
+        this.load.image('shopkeeper', require('../assets/sprites/shopkeeper.png'));
+      } catch (e) {
+        // If require/import isn't available in this environment, attempt to load by URL fallback
+        try { this.load.image('shopkeeper', 'assets/sprites/shopkeeper.png'); } catch {}
+      }
     }
   
   create() {
@@ -710,6 +723,27 @@ export class MainScene extends Phaser.Scene {
         this.takeDamage(10);
       });
 
+      // Debug: press 9 to drop the player in front of the shop entrance
+      this.input.keyboard.on('keydown-NINE', (event) => {
+        if (event?.preventDefault) event.preventDefault();
+        if (event?.stopPropagation) event.stopPropagation();
+        try {
+          const shopHost = this.shopHostId || this.startMapId || null;
+          if (!shopHost) { console.warn('No shop host configured'); return; }
+          const doorInfo = this.doorRegistry?.[shopHost]?.[DOOR_IDS.SHOP_DOOR_01];
+          const cs = this.gridCellSize || 16;
+          let px = Math.floor(this.worldPixelWidth / 2);
+          let py = Math.floor(this.worldPixelHeight / 2);
+          if (doorInfo && Number.isFinite(doorInfo.gridX) && Number.isFinite(doorInfo.gridY)) {
+            px = doorInfo.gridX * cs + Math.floor(cs / 2);
+            // place two tiles south of the entrance so player stands outside
+            py = (doorInfo.gridY + 2) * cs + Math.floor(cs / 2);
+          }
+          console.log(`DEBUG: dropping player at shop host ${shopHost} (${px},${py})`);
+          this.transitionToMapWithLock(shopHost, px, py);
+        } catch (e) { console.warn('Failed to drop player at shop', e); }
+      });
+
       this.input.keyboard.on('keydown-I', (event) => {
         if (event?.preventDefault) event.preventDefault();
         if (event?.stopPropagation) event.stopPropagation();
@@ -762,6 +796,16 @@ export class MainScene extends Phaser.Scene {
         else this.openPauseMenu();
       });
 
+      // Restart-on-R when win modal is shown: press 'R' to restart the game
+      this.input.keyboard.on('keydown-R', (event) => {
+        if (event?.preventDefault) event.preventDefault();
+        if (event?.stopPropagation) event.stopPropagation();
+        // If a win modal is active, reload the page to restart the game
+        if (this.winModal) {
+          try { window?.location?.reload?.(); } catch (e) { console.log('Restart requested'); }
+        }
+      });
+
       this.input.keyboard.on('keydown-C', (event) => {
         const names = (UIRegistry.names && UIRegistry.names()) || [];
         // If inventory UI is open, let its own key handler process 'C' (submenu/inspect/etc.)
@@ -803,6 +847,34 @@ export class MainScene extends Phaser.Scene {
 
       this.input.keyboard.on('keydown-EIGHT', () => {
         this.equipFromInventory(7);
+      });
+
+      // Debug: press 0 to grant all gold ingots and trigger the win modal
+      this.input.keyboard.on('keydown-ZERO', (event) => {
+        if (event?.preventDefault) event.preventDefault();
+        if (event?.stopPropagation) event.stopPropagation();
+        console.log('DEBUG: granting all gold ingots');
+        if (!this.collectedGoldIds) this.collectedGoldIds = new Set();
+        if (Array.isArray(this.worldGoldPlacements)) {
+          for (const p of this.worldGoldPlacements) {
+            if (p && p.goldId) this.collectedGoldIds.add(p.goldId);
+          }
+        }
+        this.goldIngotsCount = (this.goldGoal && Number.isFinite(this.goldGoal)) ? this.goldGoal : (Array.isArray(this.worldGoldPlacements) ? this.worldGoldPlacements.length : 11);
+        // Destroy any gold objects currently present in the world layer so they disappear visually
+        try {
+          if (this.worldLayer && this.worldLayer.list) {
+            for (const child of [...this.worldLayer.list]) {
+              try { if (child && child.isGoldIngot) { child.destroy(); } } catch {}
+            }
+          }
+        } catch (e) { console.warn('Failed to clear gold objects', e); }
+        // Update HUD
+        try { this.scene.get(SCENES.UI)?.updateGoldIngots?.(this.goldIngotsCount, this.goldGoal); } catch {}
+        // Trigger win
+        if (this.goldIngotsCount >= (this.goldGoal || 11)) {
+          try { this.showWinModal?.(); } catch (e) { console.warn('Failed to show win modal', e); }
+        }
       });
 
   // Set up the game world
@@ -1244,8 +1316,31 @@ export class MainScene extends Phaser.Scene {
       const modal = createModal(this, { coverHUD: true, depthBase: 620, outerMargin: 10, padTop: 20, padBottom: 18 });
       const title = addTitle(this, modal, 'World Map', { fontSize: '14px', color: '#ffffff' });
       const hint = this.add.text(modal.center.x, modal.content.bottom, 'O to close', { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5, 1).setDepth(623);
-      // Compute grid bounds (exclude shop tiles from overworld map)
-      const layouts = Object.entries(this.worldMapLayout).filter(([, v]) => v.type !== 'shop');
+      // Compute grid bounds from generated maps: pick all overworld tiles
+      let layouts = [];
+      try {
+        for (const [mapId, mapData] of Object.entries(this.maps || {})) {
+          if (mapData && mapData.type === 'overworld') {
+            // Expect ids like 'overworld_r_c'
+            const parts = String(mapId).split('_');
+            if (parts.length >= 3) {
+              const r = parseInt(parts[1], 10);
+              const c = parseInt(parts[2], 10);
+              if (Number.isFinite(r) && Number.isFinite(c)) {
+                layouts.push([mapId, { gx: c, gy: r, type: 'overworld' }]);
+                continue;
+              }
+            }
+            // Fallback: if no parse, attempt to use any existing worldMapLayout entry
+            if (this.worldMapLayout && this.worldMapLayout[mapId]) {
+              layouts.push([mapId, this.worldMapLayout[mapId]]);
+            }
+          }
+        }
+      } catch (e) {
+        // Fallback to older static layout if anything goes wrong
+        layouts = Object.entries(this.worldMapLayout).filter(([, v]) => v.type !== 'shop');
+      }
       // If nothing to draw, just build empty container with modal
       if (layouts.length === 0) {
         this.worldMapContainer = this.add.container(0, 0, [modal.backdrop, modal.panel, title, hint]).setDepth(620);
@@ -1259,30 +1354,30 @@ export class MainScene extends Phaser.Scene {
       const maxGY = Math.max(...layouts.map(([, v]) => v.gy));
       const cols = (maxGX - minGX + 1) || 1;
       const rows = (maxGY - minGY + 1) || 1;
-      // Tile size fit into modal content, reserving space for title and bottom hint,
-      // but also small enough to eventually fit 64x64 tiles
-      const titleH = Math.ceil(title?.height || 0);
-      const hintH = Math.ceil(hint?.height || 0);
-      const availW = modal.content.width();
-      const availableTop = modal.content.top + titleH + 6;
-      const availableBottom = modal.content.bottom - hintH - 6;
-      const availH = Math.max(0, availableBottom - availableTop);
-      const gap = 1; // tighter gap to allow dense grids
-      // Size based on current extents
-      const tileW = Math.floor((availW - gap * (cols - 1)) / cols);
-      const tileH = Math.floor((availH - gap * (rows - 1)) / rows);
-      const layoutTile = Math.floor(Math.min(tileW, tileH));
-      // Size required if the map grows to 64x64
-      const targetCols = 64;
-      const targetRows = 64;
-      const tileW64 = Math.floor((availW - gap * (targetCols - 1)) / targetCols);
-      const tileH64 = Math.floor((availH - gap * (targetRows - 1)) / targetRows);
-      const capTile = Math.floor(Math.min(tileW64, tileH64));
-      const tileSize = Math.max(3, Math.min(layoutTile, capTile));
-      const gridW = cols * tileSize + (cols - 1) * gap;
-      const gridH = rows * tileSize + (rows - 1) * gap;
-      const startX = modal.content.left + Math.floor((availW - gridW) / 2);
-      const startY = availableTop + Math.floor((availH - gridH) / 2);
+  // Tile size fit into modal content, reserving space for title and bottom hint.
+  // We want tiles to be visually larger on the overworld overlay: attempt a 3x scale
+  const titleH = Math.ceil(title?.height || 0);
+  const hintH = Math.ceil(hint?.height || 0);
+  const availW = modal.content.width();
+  const availableTop = modal.content.top + titleH + 6;
+  const availableBottom = modal.content.bottom - hintH - 6;
+  const availH = Math.max(0, availableBottom - availableTop);
+  const gap = 1; // tighter gap to allow dense grids
+  // Base per-tile size to fit the current grid extents
+  const tileW = Math.floor((availW - gap * (cols - 1)) / cols);
+  const tileH = Math.floor((availH - gap * (rows - 1)) / rows);
+  const baseTile = Math.floor(Math.min(tileW, tileH));
+  // Attempt to scale tiles up by 3x for better visibility
+  let tileSize = Math.max(3, baseTile * 3);
+  // Ensure tileSize still fits; if not, clamp to fit modal
+  const fitTileW = Math.floor((availW - gap * (cols - 1)) / cols);
+  const fitTileH = Math.floor((availH - gap * (rows - 1)) / rows);
+  const fitMax = Math.max(3, Math.floor(Math.min(fitTileW, fitTileH)));
+  if (tileSize > fitMax) tileSize = fitMax;
+  const gridW = cols * tileSize + (cols - 1) * gap;
+  const gridH = rows * tileSize + (rows - 1) * gap;
+  const startX = modal.content.left + Math.floor((availW - gridW) / 2);
+  const startY = availableTop + Math.floor((availH - gridH) / 2);
       // Draw tiles
       const cont = this.add.container(0, 0).setDepth(622);
       cont.setScrollFactor(0);
@@ -1299,18 +1394,7 @@ export class MainScene extends Phaser.Scene {
         const r = this.add.rectangle(x, y, tileSize, tileSize, color, fillAlpha).setStrokeStyle(strokeW, isCurrent ? 0xffff00 : stroke).setDepth(622).setScrollFactor(0);
         cont.add(r);
         if (visited) {
-          // Label only when tiles are reasonably large; abbreviate for tiny tiles
-          if (tileSize >= 14) {
-            const labelText = this.maps[mapId]?.type === 'shop' ? '' : 'Overworld';
-            const fs = Math.max(8, Math.floor(tileSize * 0.5));
-            const label = this.add.text(x, y, labelText, { fontSize: `${fs}px`, color: '#ffffff' }).setOrigin(0.5).setDepth(623).setScrollFactor(0);
-            cont.add(label);
-          } else if (tileSize >= 8) {
-            const labelText = this.maps[mapId]?.type === 'shop' ? '' : 'O';
-            const fs = Math.max(6, Math.floor(tileSize * 0.6));
-            const label = this.add.text(x, y, labelText, { fontSize: `${fs}px`, color: '#ffffff' }).setOrigin(0.5).setDepth(623).setScrollFactor(0);
-            cont.add(label);
-          }
+          // No per-tile text labels on the overworld map; keep tiles clean for readability
         }
       });
       this.worldMapContainer = this.add.container(0, 0, [modal.backdrop, modal.panel, title, hint, cont]).setDepth(620);
@@ -1438,7 +1522,7 @@ export class MainScene extends Phaser.Scene {
       const modal = createModal(this, { coverHUD: true, depthBase: 800, outerMargin: 10, padTop: 20, padBottom: 18 });
       const title = addTitle(this, modal, 'You Win!', { fontSize: '16px', color: '#ffff66' });
       const msg = this.add.text(modal.center.x, modal.center.y, `You collected all ${this.goldGoal} gold ingots!`, { fontSize: '12px', color: '#ffffff', align: 'center', wordWrap: { width: modal.content.width() - 20 } }).setOrigin(0.5).setDepth(802);
-      const hint = this.add.text(modal.center.x, modal.content.bottom, 'Press ESC to close', { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5, 1).setDepth(803);
+      const hint = this.add.text(modal.center.x, modal.center.y + 100, 'Press ESC to close, R to reset', { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5, 1).setDepth(803);
       this.winModal = { modal, title, msg, hint };
       try { this.physics.world.pause(); } catch {}
       try { this.tweens.pauseAll(); } catch {}
@@ -1454,6 +1538,7 @@ export class MainScene extends Phaser.Scene {
       // If ESC is pressed and no higher-priority UI, let global handler close via stack
       this.closeWinModal = close;
     }
+
 
     // --- Mini-map overlay helpers ---
     toggleMiniMap() {

@@ -5,6 +5,7 @@
 */
 import Phaser from 'phaser';
 import { damageEnemy } from './enemies';
+import { getShieldDisplaySize } from './economy';
 
 export function swingMeleeWeapon(scene: any) {
   if (!scene.hasMeleeWeapon) { console.log('Cannot swing melee weapon - no weapon equipped!'); return; }
@@ -116,6 +117,36 @@ export function swingMeleeWeapon(scene: any) {
     });
   }
 
+  // Allow melee swings to pick up gold ingots within reach and frontal arc
+  try {
+    const golds: any[] = [];
+    if (scene.worldLayer && Array.isArray(scene.worldLayer.list)) {
+      for (const c of scene.worldLayer.list) {
+        if (c && c.isGoldIngot) golds.push(c);
+      }
+    }
+    for (const gold of golds) {
+      if (!gold || !gold.active) continue;
+      const dist = Phaser.Math.Distance.Between(scene.player.x, scene.player.y, gold.x, gold.y);
+      if (dist > 36) continue; // same reach as enemies
+      const dx = gold.x - scene.player.x; const dy = gold.y - scene.player.y;
+      const goldAngle = Phaser.Math.RadToDeg(Math.atan2(dy, dx));
+      const dirAngle = (() => {
+        switch (scene.lastDirection) {
+          case 'left': return 180;
+          case 'up': return -90;
+          case 'down': return 90;
+          default: return 0; // right
+        }
+      })();
+      const diff = Phaser.Math.Angle.WrapDegrees(goldAngle - dirAngle);
+      if (Math.abs(diff) <= 60) {
+        // Trigger pickup (MainScene implements pickupGoldIngot)
+        try { if (typeof scene.pickupGoldIngot === 'function') scene.pickupGoldIngot(scene.player, gold); } catch (e) {}
+      }
+    }
+  } catch (e) {}
+
   // If the player swung at the shopkeeper, the shopkeeper retaliates with a powerful shot
   try {
     const keep = scene.shopkeeper;
@@ -205,14 +236,25 @@ export function raiseShield(scene: any) {
   if (scene.meleeWeaponSwinging) { console.log('Cannot raise shield - currently swinging melee weapon!'); return; }
   scene.shieldRaised = true;
   let shieldColor = 0x654321; let shieldSize = { width: 12, height: 16 };
-  if (scene.equippedShield) { shieldColor = scene.equippedShield.color; shieldSize = scene.equippedShield.size; }
-  else {
-    switch (scene.shieldType) {
-      case 'basic': shieldColor = 0x654321; shieldSize = { width: 12, height: 16 }; break;
-      case 'strong': shieldColor = 0xC0C0C0; shieldSize = { width: 14, height: 18 }; break;
-      case 'light': shieldColor = 0x4169E1; shieldSize = { width: 10, height: 14 }; break;
+  try {
+    // Prefer explicit equipped shield size if provided
+    if (scene.equippedShield && scene.equippedShield.size) {
+      shieldColor = scene.equippedShield.color || shieldColor;
+      shieldSize = scene.equippedShield.size;
+    } else {
+      // Otherwise derive size from price/quality
+      const subtype = scene.shieldType || 'basic';
+      try {
+        const s = (typeof getShieldDisplaySize === 'function') ? getShieldDisplaySize(subtype) : null;
+        if (s) shieldSize = s;
+      } catch {}
+      switch (scene.shieldType) {
+        case 'basic': shieldColor = 0x654321; break;
+        case 'strong': shieldColor = 0xC0C0C0; break;
+        case 'light': shieldColor = 0x4169E1; break;
+      }
     }
-  }
+  } catch (e) {}
   if (!scene.shieldSprite) {
     scene.shieldSprite = scene.add.rectangle(0, 0, shieldSize.width, shieldSize.height, shieldColor);
     scene.shieldSprite.setDepth(2); // ensure shield renders above player/world

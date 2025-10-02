@@ -112,13 +112,20 @@ export function createShopkeeperSprite(scene: any, x: number, y: number, opts: S
     g.fillRect(Math.max(0, hatX - 2), brimY, Math.min(widthPx, hatW + 4), 2);
   }
 
-  // Generate a texture key unique to this seed + dim combo
-  const key = `npc_shopkeeper_${widthPx}x${heightPx}_${hash32(seed)}`;
-  g.generateTexture(key, widthPx, heightPx);
-  g.destroy();
+  // Prefer a preloaded static 'shopkeeper' texture if available; otherwise generate a procedural texture
+  const staticKey = 'shopkeeper';
+  let textureKey = null;
+  if (scene.textures && typeof scene.textures.exists === 'function' && scene.textures.exists(staticKey)) {
+    textureKey = staticKey;
+    // we won't need the graphics object g anymore
+    g.destroy();
+  } else {
+    textureKey = `npc_shopkeeper_${widthPx}x${heightPx}_${hash32(seed)}`;
+    g.generateTexture(textureKey, widthPx, heightPx);
+    g.destroy();
+  }
 
-  // Create sprite
-  const sprite = scene.add.sprite(x, y, key) as ShopkeeperSprite;
+  const sprite = scene.add.sprite(x, y, textureKey) as ShopkeeperSprite;
   sprite.setOrigin(0.5, 1);
   sprite.setDepth(1);
   sprite.npcType = 'shopkeeper';

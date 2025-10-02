@@ -336,6 +336,18 @@ export class UIScene extends Phaser.Scene {
         else if (shieldData.type === 'light') shieldColor = 0x4169E1; // Blue
         
         this.shieldIcon.setFillStyle(shieldColor);
+        // Adjust icon size based on shield subtype (visual cue for strength)
+        try {
+            const econ = require('../lib/economy');
+            if (econ && typeof econ.getShieldDisplaySize === 'function') {
+                const s = econ.getShieldDisplaySize(shieldData.type || 'basic');
+                if (s) {
+                    this.shieldIcon.setSize(Math.max(4, s.width / 2), Math.max(6, s.height / 2));
+                }
+            }
+        } catch (e) {
+            // ignore if require not available in runtime
+        }
     }
 
     updateEquipmentDisplay(weaponData, shieldData) {

@@ -153,7 +153,7 @@ export function updateEquipmentHUD(scene: any): void {
 }
 
 export function equipDefaultWeapon(scene: any): void {
-  const defaultWeapon = { type: 'weapon', subtype: 'starter', name: 'Rusty Pickaxe', color: 0x666666, size: { width: 14, height: 3 }, swingDuration: 350 };
+  const defaultWeapon = { type: 'weapon', subtype: 'starter', name: 'Rusty Pickaxe', color: 0x666666, size: { width: 6, height: 3 }, swingDuration: 350 };
   addToInventory(scene, defaultWeapon);
   equipWeapon(scene, defaultWeapon);
   console.log('Equipped default starter weapon: Rusty Pickaxe');

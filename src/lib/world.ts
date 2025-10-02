@@ -5,7 +5,7 @@ import { rngFor, randInt } from './rng';
  - See: docs/ai/index.json
 */
 import { MAP_IDS, DOOR_IDS } from './constants';
-import { getCurrencySpec } from './economy';
+import { getCurrencySpec, getShieldDisplaySize, getWeaponDisplayLength } from './economy';
 import { createShopkeeperSprite } from './npcSprites';
 import { generateBiomeContent, getBiomeForMap } from './biomes';
 import { generateMazeWalls } from './maze';
@@ -554,32 +554,56 @@ export function createMapObjects(scene: any, options: any = {}) {
     if (scene.worldLayer) scene.worldLayer.add(label);
     scene.shopkeeper.label = label;
     if (!scene.collectedItems.meleeWeapon1) {
-      const obj = placeObjectOnGrid(scene, 4, 4, 'weapon', null, { width: 12, height: 4, color: 0x888888, weaponType: 'basic', weaponName: 'Iron Pickaxe' });
-      if (obj) { (obj as any).isShopItem = true; (obj as any).itemType = 'weapon'; (obj as any).itemSubtype = (obj as any).weaponType; (obj as any).itemName = (obj as any).weaponName; }
-      scene.meleeWeapon1 = obj;
+      try {
+        const ws = getWeaponDisplayLength('basic');
+        const obj = placeObjectOnGrid(scene, 4, 4, 'weapon', null, { width: ws.width, height: ws.height, color: 0x888888, weaponType: 'basic', weaponName: 'Iron Pickaxe' });
+        if (obj) { (obj as any).isShopItem = true; (obj as any).itemType = 'weapon'; (obj as any).itemSubtype = (obj as any).weaponType; (obj as any).itemName = (obj as any).weaponName; }
+        scene.meleeWeapon1 = obj;
+      } catch (e) {
+        const obj = placeObjectOnGrid(scene, 4, 4, 'weapon', null, { width: 12, height: 4, color: 0x888888, weaponType: 'basic', weaponName: 'Iron Pickaxe' });
+        if (obj) { (obj as any).isShopItem = true; (obj as any).itemType = 'weapon'; (obj as any).itemSubtype = (obj as any).weaponType; (obj as any).itemName = (obj as any).weaponName; }
+        scene.meleeWeapon1 = obj;
+      }
     }
     if (!scene.collectedItems.meleeWeapon2) {
-      const obj = placeObjectOnGrid(scene, 6, 4, 'weapon', null, { width: 14, height: 4, color: 0xFFD700, weaponType: 'strong', weaponName: 'Golden Pickaxe' });
-      if (obj) { (obj as any).isShopItem = true; (obj as any).itemType = 'weapon'; (obj as any).itemSubtype = (obj as any).weaponType; (obj as any).itemName = (obj as any).weaponName; }
-      scene.meleeWeapon2 = obj;
+      try {
+        const ws = getWeaponDisplayLength('strong');
+        const obj = placeObjectOnGrid(scene, 6, 4, 'weapon', null, { width: ws.width, height: ws.height, color: 0xFFD700, weaponType: 'strong', weaponName: 'Golden Pickaxe' });
+        if (obj) { (obj as any).isShopItem = true; (obj as any).itemType = 'weapon'; (obj as any).itemSubtype = (obj as any).weaponType; (obj as any).itemName = (obj as any).weaponName; }
+        scene.meleeWeapon2 = obj;
+      } catch (e) {
+        const obj = placeObjectOnGrid(scene, 6, 4, 'weapon', null, { width: 14, height: 4, color: 0xFFD700, weaponType: 'strong', weaponName: 'Golden Pickaxe' });
+        if (obj) { (obj as any).isShopItem = true; (obj as any).itemType = 'weapon'; (obj as any).itemSubtype = (obj as any).weaponType; (obj as any).itemName = (obj as any).weaponName; }
+        scene.meleeWeapon2 = obj;
+      }
     }
     if (!scene.collectedItems.meleeWeapon3) {
-      const obj = placeObjectOnGrid(scene, 8, 4, 'weapon', null, { width: 10, height: 4, color: 0x00FFFF, weaponType: 'fast', weaponName: 'Crystal Pickaxe' });
-      if (obj) { (obj as any).isShopItem = true; (obj as any).itemType = 'weapon'; (obj as any).itemSubtype = (obj as any).weaponType; (obj as any).itemName = (obj as any).weaponName; }
-      scene.meleeWeapon3 = obj;
+      try {
+        const ws = getWeaponDisplayLength('fast');
+        const obj = placeObjectOnGrid(scene, 8, 4, 'weapon', null, { width: ws.width, height: ws.height, color: 0x00FFFF, weaponType: 'fast', weaponName: 'Crystal Pickaxe' });
+        if (obj) { (obj as any).isShopItem = true; (obj as any).itemType = 'weapon'; (obj as any).itemSubtype = (obj as any).weaponType; (obj as any).itemName = (obj as any).weaponName; }
+        scene.meleeWeapon3 = obj;
+      } catch (e) {
+        const obj = placeObjectOnGrid(scene, 8, 4, 'weapon', null, { width: 10, height: 4, color: 0x00FFFF, weaponType: 'fast', weaponName: 'Crystal Pickaxe' });
+        if (obj) { (obj as any).isShopItem = true; (obj as any).itemType = 'weapon'; (obj as any).itemSubtype = (obj as any).weaponType; (obj as any).itemName = (obj as any).weaponName; }
+        scene.meleeWeapon3 = obj;
+      }
     }
     if (!scene.collectedItems.shield1) {
-      const obj = placeObjectOnGrid(scene, 12, 4, 'shield', null, { width: 10, height: 14, color: 0x654321, shieldType: 'basic', shieldName: 'Wooden Shield' });
+      const s1 = getShieldDisplaySize('basic');
+      const obj = placeObjectOnGrid(scene, 12, 4, 'shield', null, { width: s1.width, height: s1.height, color: 0x654321, shieldType: 'basic', shieldName: 'Wooden Shield' });
       if (obj) { (obj as any).isShopItem = true; (obj as any).itemType = 'shield'; (obj as any).itemSubtype = (obj as any).shieldType; (obj as any).itemName = (obj as any).shieldName; }
       scene.shield1 = obj;
     }
     if (!scene.collectedItems.shield2) {
-      const obj = placeObjectOnGrid(scene, 14, 4, 'shield', null, { width: 12, height: 16, color: 0xC0C0C0, shieldType: 'strong', shieldName: 'Steel Shield' });
+      const s2 = getShieldDisplaySize('strong');
+      const obj = placeObjectOnGrid(scene, 14, 4, 'shield', null, { width: s2.width, height: s2.height, color: 0xC0C0C0, shieldType: 'strong', shieldName: 'Steel Shield' });
       if (obj) { (obj as any).isShopItem = true; (obj as any).itemType = 'shield'; (obj as any).itemSubtype = (obj as any).shieldType; (obj as any).itemName = (obj as any).shieldName; }
       scene.shield2 = obj;
     }
     if (!scene.collectedItems.shield3) {
-      const obj = placeObjectOnGrid(scene, 16, 4, 'shield', null, { width: 8, height: 12, color: 0x4169E1, shieldType: 'light', shieldName: 'Magic Shield' });
+      const s3 = getShieldDisplaySize('light');
+      const obj = placeObjectOnGrid(scene, 16, 4, 'shield', null, { width: s3.width, height: s3.height, color: 0x4169E1, shieldType: 'light', shieldName: 'Magic Shield' });
       if (obj) { (obj as any).isShopItem = true; (obj as any).itemType = 'shield'; (obj as any).itemSubtype = (obj as any).shieldType; (obj as any).itemName = (obj as any).shieldName; }
       scene.shield3 = obj;
     }

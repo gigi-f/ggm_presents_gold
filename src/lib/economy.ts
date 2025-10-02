@@ -132,3 +132,30 @@ export function getItemPrice(type: ItemType, subtype: string): number {
   if (type === 'consumable') return CONSUMABLE_PRICES[subtype] ?? 3;
   return 1;
 }
+
+// Visual shield sizing: scale shield display size based on price (cheaper -> smaller, expensive -> larger)
+export function getShieldDisplaySize(subtype: string) {
+  const price = getItemPrice('shield', subtype);
+  const prices = Object.values(SHIELD_PRICES);
+  const minP = Math.min(...prices);
+  const maxP = Math.max(...prices);
+  const t = (price - minP) / Math.max(1, (maxP - minP));
+  const minW = 10, maxW = 18;
+  const minH = 14, maxH = 22;
+  const width = Math.max(6, Math.round(minW + t * (maxW - minW)));
+  const height = Math.max(8, Math.round(minH + t * (maxH - minH)));
+  return { width, height };
+}
+
+// Weapon visual sizing: map weapon price to a display length so better weapons look longer
+export function getWeaponDisplayLength(subtype: string) {
+  const price = getItemPrice('weapon', subtype);
+  const prices = Object.values(WEAPON_PRICES);
+  const minP = Math.min(...prices);
+  const maxP = Math.max(...prices);
+  const t = (price - minP) / Math.max(1, (maxP - minP));
+  const minLen = 12, maxLen = 28; // px
+  const length = Math.max(8, Math.round(minLen + t * (maxLen - minLen)));
+  // Keep a small fixed height for weapons
+  return { width: length, height: 3 };
+}
