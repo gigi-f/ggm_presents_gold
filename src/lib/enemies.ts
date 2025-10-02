@@ -6,6 +6,8 @@
 import Phaser from 'phaser';
 import { ensureBatTexture } from './batSprite';
 import { ensureWolfTexture } from './wolfSprite';
+import * as World from './world';
+import { ENEMY_DROP_CHANCES } from './constants';
 
 export type Enemy = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
   enemyType: 'bat' | 'slime' | 'wolf';
@@ -214,6 +216,27 @@ export function killEnemy(scene: any, enemy: Enemy) {
   if (!enemy || !enemy.active) return;
   try { const puff = scene.add.circle(enemy.x, enemy.y, 6, 0xffffff, 1); puff.setDepth((enemy.depth ?? 2) + 1); scene.tweens.add({ targets: puff, alpha: 0, scale: 1.8, duration: 200, onComplete: () => puff.destroy() }); } catch {}
   try { (enemy as any)._bobbing?.stop(); (enemy as any)._flap?.stop(); } catch {}
+  // Chance to drop currency on death: weak enemies (bat, slime) rarely drop copper; strong (wolf) rarely drop silver
+  try {
+    const r = Math.random();
+    let dropType: 'copper' | 'silver' | null = null;
+    // Drop chances are configured in constants
+    if (enemy.enemyType === 'bat' || enemy.enemyType === 'slime') {
+      if (r < (ENEMY_DROP_CHANCES.WEAK_COPPER ?? 0.08)) dropType = 'copper';
+    } else if (enemy.enemyType === 'wolf') {
+      if (r < (ENEMY_DROP_CHANCES.STRONG_SILVER ?? 0.05)) dropType = 'silver';
+    }
+    if (dropType) {
+      try {
+        const q = World.quantizeWorldPosition(scene, enemy.x, enemy.y, { markOccupied: false });
+        const coin = World.placeObjectOnGrid(scene, q.gridX, q.gridY, 'currency', null, { type: dropType });
+        if (coin) {
+          try { scene.physics.add.overlap(scene.player, coin, scene.pickupCurrency, null, scene); } catch {}
+        }
+      } catch {}
+    }
+  } catch {}
+
   try { (enemy as any).destroy(); } catch {}
 }
 

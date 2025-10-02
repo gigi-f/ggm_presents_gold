@@ -38,6 +38,14 @@ export const DIRECTIONS = {
   DOWN: 'down'
 } as const;
 
+// Chance configuration for enemy currency drops (values are probabilities 0..1)
+export const ENEMY_DROP_CHANCES = {
+  // Weak enemies (bat, slime) chance to drop a copper ingot
+  WEAK_COPPER: 0.2,
+  // Strong enemies (wolf) chance to drop a silver ingot
+  STRONG_SILVER: 0.15
+} as const;
+
 export type SceneKey = typeof SCENES[keyof typeof SCENES];
 export type MapId = typeof MAP_IDS[keyof typeof MAP_IDS];
 export type DoorId = typeof DOOR_IDS[keyof typeof DOOR_IDS];
