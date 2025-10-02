@@ -319,7 +319,10 @@ export function createDoorsForMap(scene: any) {
         const sensor = (doorContainer as any).doorRect;
         if (doorData.type === 'building_entrance') {
           scene.physics.add.overlap(scene.player, sensor, scene.enterBuilding, () => !scene.transitionLock, scene);
-          if (doorId === DOOR_IDS.SHOP_DOOR_01 && scene.currentMap === MAP_IDS.OVERWORLD_01) {
+          // If this is the configured shop door for this world, create the shop building
+          // Use scene.shopHostId (set by MainScene) so the building appears where the shop was placed
+          const shopHost = (scene && scene.shopHostId) ? scene.shopHostId : MAP_IDS.OVERWORLD_01;
+          if (doorId === DOOR_IDS.SHOP_DOOR_01 && scene.currentMap === shopHost) {
             createShopBuilding(scene, doorData.gridX, doorData.gridY);
             if (scene.worldLayer && doorContainer) {
               try { scene.worldLayer.bringToTop(doorContainer); } catch {}
