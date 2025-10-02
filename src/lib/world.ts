@@ -1,4 +1,4 @@
-import { rngFor } from './rng';
+import { rngFor, randInt } from './rng';
 /*
  AI-INDEX
  - Tags: mechanics.doors, mechanics.economy, mechanics.buildings
@@ -514,12 +514,22 @@ export function createMapObjects(scene: any, options: any = {}) {
     scene.copperIngot1 = spawnCurrency('overworld1:copper1', 10, 5, 'copper');
     scene.silverIngot1 = spawnCurrency('overworld1:silver1', 11, 5, 'silver');
     const spawnGold = (id: string, gx: number, gy: number) => {
-      if (scene.collectedGoldIds && scene.collectedGoldIds.has(id)) return;
+      if (scene.collectedGoldIds && scene.collectedGoldIds.has(id)) return null;
       const obj = placeObjectOnGrid(scene, gx, gy, 'goldIngot', null, { goldId: id, width: 12, height: 6, color: 0xffd700 });
       if (obj) (obj as any).goldId = id;
       return obj;
     };
-    scene.goldIngot1 = spawnGold('gold:ow1:1', 16, 12);
+    // Spawn any gold placements that belong to this map
+    if (Array.isArray((scene as any).worldGoldPlacements)) {
+      let idx = 1;
+      for (const p of (scene as any).worldGoldPlacements) {
+        if (p.mapId === scene.currentMap) {
+          const g = spawnGold(p.goldId, p.gx, p.gy);
+          if (g) (scene as any)[`goldIngot${idx}`] = g;
+          idx++;
+        }
+      }
+    }
   } else if (scene.currentMap === MAP_IDS.OVERWORLD_02) {
     // desert placeholder
   } else if (scene.currentMap === MAP_IDS.OVERWORLD_00) {
@@ -588,6 +598,19 @@ export function createMapObjects(scene: any, options: any = {}) {
   }
 
   createDoorsForMap(scene);
+  // Spawn gold ingots for this map from precomputed placements (if any)
+  try {
+    if (Array.isArray((scene as any).worldGoldPlacements)) {
+      let idx = 1;
+      for (const p of (scene as any).worldGoldPlacements) {
+        if (p.mapId === scene.currentMap) {
+          if (scene.collectedGoldIds && scene.collectedGoldIds.has(p.goldId)) continue;
+          const obj = placeObjectOnGrid(scene, p.gx, p.gy, 'goldIngot', null, { goldId: p.goldId, width: 12, height: 6, color: 0xffd700 });
+          if (obj) { (obj as any).goldId = p.goldId; (scene as any)[`goldIngot${idx}`] = obj; idx++; }
+        }
+      }
+    }
+  } catch (e) { console.warn('Gold spawn failed:', e); }
   try { generateMazeWalls(scene, { biome: getBiomeForMap(scene, scene.currentMap) }); } catch (e) { console.warn('Maze generation failed:', e); }
 
   scene.physics.add.collider(scene.player, scene.boundaryRocks);
@@ -647,6 +670,32 @@ export function createMapObjects(scene: any, options: any = {}) {
   if (!Number.isFinite(scene.worldSeed)) {
     scene.worldSeed = (Math.random() * 0xFFFFFFFF) >>> 0;
   }
+  // Generate world gold placements once per world seed: 11 gold bars on distinct overworld tiles
+  try {
+    if (!scene.worldGoldPlacements) {
+      const allOverworld = Object.keys(scene.maps || {}).filter(k => (scene.maps[k] && scene.maps[k].type === 'overworld'));
+      const rng = rngFor(scene, 'goldPlacement');
+      const count = Math.min(11, allOverworld.length);
+      // sample without replacement
+      const pool = allOverworld.slice();
+      const chosen: string[] = [];
+      for (let i = 0; i < count; i++) {
+        const idx = Math.floor(rng() * pool.length);
+        chosen.push(pool.splice(idx, 1)[0]);
+      }
+      const Wg = Math.floor(scene.worldPixelWidth / scene.gridCellSize);
+      const Hg = Math.floor(scene.worldPixelHeight / scene.gridCellSize);
+      const placements: Array<any> = [];
+      for (let i = 0; i < chosen.length; i++) {
+        const mapId = chosen[i];
+        // pick a tile away from edges (2..Wg-3)
+        const gx = randInt(rng, 2, Math.max(2, Wg - 3));
+        const gy = randInt(rng, 2, Math.max(2, Hg - 3));
+        placements.push({ mapId, gx, gy, goldId: `gold:${mapId}:${i}` });
+      }
+      scene.worldGoldPlacements = placements;
+    }
+  } catch (e) { console.warn('Gold placement generation failed:', e); }
   try { generateBiomeContent(scene); } catch (e) { console.warn('Biome generation failed:', e); }
 
   if (scene.gridVisible) createGridVisualization(scene);

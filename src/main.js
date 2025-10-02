@@ -182,19 +182,27 @@ export class MainScene extends Phaser.Scene {
         }
       }
     }
-    // Add shop door on start map (center) and matching exit on shop map
+    // Choose a random overworld tile to host the shop (preferably not the starting tile)
     const shopMap = MAP_IDS.SHOP_01;
     if (!this.doorRegistry[shopMap]) this.doorRegistry[shopMap] = {};
-    // Ensure startMapId exists
-    if (this.startMapId) {
-      if (!this.doorRegistry[this.startMapId]) this.doorRegistry[this.startMapId] = {};
-      this.doorRegistry[this.startMapId][DOOR_IDS.SHOP_DOOR_01] = { gridX: Math.max(2, Math.min(Wg - 2, 4)), gridY: Math.max(2, Math.min(Hg - 2, 8)), type: 'building_entrance' };
-      this.maps[this.startMapId].doors = this.maps[this.startMapId].doors || {};
-      this.maps[this.startMapId].doors[DOOR_IDS.SHOP_DOOR_01] = { targetMap: shopMap, targetDoor: DOOR_IDS.SHOP_EXIT_01 };
-      // Shop exit back to start
+    const overworldIds = Object.keys(this.maps).filter(k => this.maps[k] && this.maps[k].type === 'overworld');
+    let shopHostId = this.startMapId;
+    try {
+      const candidates = overworldIds.filter(id => id !== this.startMapId);
+      const pickPool = candidates.length ? candidates : overworldIds;
+      shopHostId = pickPool[Math.floor(rand() * pickPool.length)];
+    } catch (e) { shopHostId = this.startMapId; }
+    if (shopHostId) {
+      if (!this.doorRegistry[shopHostId]) this.doorRegistry[shopHostId] = {};
+      this.doorRegistry[shopHostId][DOOR_IDS.SHOP_DOOR_01] = { gridX: Math.max(2, Math.min(Wg - 2, 4)), gridY: Math.max(2, Math.min(Hg - 2, 8)), type: 'building_entrance' };
+      this.maps[shopHostId].doors = this.maps[shopHostId].doors || {};
+      this.maps[shopHostId].doors[DOOR_IDS.SHOP_DOOR_01] = { targetMap: shopMap, targetDoor: DOOR_IDS.SHOP_EXIT_01 };
+      // Shop exit back to shopHost
       this.doorRegistry[shopMap][DOOR_IDS.SHOP_EXIT_01] = { gridX: Math.max(2, Math.min(Wg - 2, 10)), gridY: Math.max(2, Math.min(Hg - 2, 16)), type: 'building_exit' };
       this.maps[shopMap].doors = this.maps[shopMap].doors || {};
-      this.maps[shopMap].doors[DOOR_IDS.SHOP_EXIT_01] = { targetMap: this.startMapId, targetDoor: DOOR_IDS.SHOP_DOOR_01 };
+      this.maps[shopMap].doors[DOOR_IDS.SHOP_EXIT_01] = { targetMap: shopHostId, targetDoor: DOOR_IDS.SHOP_DOOR_01 };
+      // Remember where the shop is placed for debug/logic
+      this.shopHostId = shopHostId;
     }
 
     this.activeDoors = {};
