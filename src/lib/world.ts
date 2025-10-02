@@ -137,9 +137,22 @@ export function placeObjectOnGrid(scene: any, gridX: number, gridY: number, obje
   let obj: any = null;
   switch (objectType) {
     case 'weapon': {
-      obj = scene.add.rectangle(worldPos.x, worldPos.y, extraData.width, extraData.height, extraData.color);
+      const w = Math.round(extraData.width || 16);
+      const h = Math.round(extraData.height || 4);
+      obj = scene.add.rectangle(worldPos.x, worldPos.y, w, h, extraData.color);
       scene.physics.add.existing(obj);
       obj.body.setImmovable(true);
+      // Ensure physics body matches the visual rectangle size and is properly offset
+      try {
+        if (obj.body && typeof obj.body.setSize === 'function') {
+          obj.body.setSize(w, h);
+          if (typeof obj.body.setOffset === 'function' && obj.displayWidth != null && obj.displayHeight != null) {
+            const offX = (obj.displayWidth - w) / 2;
+            const offY = (obj.displayHeight - h) / 2;
+            try { obj.body.setOffset(offX, offY); } catch {}
+          }
+        }
+      } catch {}
       obj.weaponType = extraData.weaponType;
       obj.weaponName = extraData.weaponName;
       if (scene.worldLayer) scene.worldLayer.add(obj);

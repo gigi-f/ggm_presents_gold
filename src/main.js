@@ -391,7 +391,101 @@ export class MainScene extends Phaser.Scene {
       if (this.health <= 0) {
         // Handle player death here
         console.log('Player died!');
+        try { this.showDeathModal?.(); } catch (e) { console.warn('Failed to show death modal', e); }
       }
+    }
+
+    // Simple death modal similar to win modal
+    showDeathModal() {
+      if (UIRegistry.anyOpen && UIRegistry.anyOpen()) return; // avoid stacking
+      UIRegistry.open?.('death');
+      const modal = createModal(this, { coverHUD: true, depthBase: 800, outerMargin: 10, padTop: 20, padBottom: 18 });
+      const title = addTitle(this, modal, 'DEAD', { fontSize: '20px', color: '#ff4444' });
+      const msg = this.add.text(modal.center.x, modal.center.y, `You have died.`, { fontSize: '12px', color: '#ffffff', align: 'center', wordWrap: { width: modal.content.width() - 20 } }).setOrigin(0.5).setDepth(802);
+      const hint = this.add.text(modal.center.x, modal.center.y + 100, 'Press R to restart', { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5, 1).setDepth(803);
+      this.deathModal = { modal, title, msg, hint };
+      try { this.physics.world.pause(); } catch {}
+      try { this.tweens.pauseAll(); } catch {}
+      const close = () => {
+        UIRegistry.close?.('death');
+        [title, msg, hint].forEach(n => { try { n?.destroy(); } catch {} });
+        try { modal?.destroy(); } catch {}
+        this.deathModal = null;
+        try { this.physics.world.resume(); } catch {}
+        try { this.tweens.resumeAll(); } catch {}
+      };
+      this.closeDeathModal = close;
+    }
+
+    // Soft restart: reset in-memory game state and reinitialize world and HUD without a page reload
+    restartGame() {
+      console.log('Restarting game in-memory...');
+      // Close any open win/death modals
+      try { if (this.closeWinModal) { try { this.closeWinModal(); } catch {} } } catch {}
+      try { if (this.closeDeathModal) { try { this.closeDeathModal(); } catch {} } } catch {}
+      // Reset player state
+      try {
+        this.health = this.maxHealth;
+        this.stamina = this.maxStamina;
+        this.goldIngotsCount = 0;
+        this.collectedGoldIds = new Set();
+        this.collectedCurrency = new Set();
+        this.wallet = initWallet ? initWallet(this) : (this.wallet || { total: 0, counts: { copper: 0, silver: 0 } });
+      } catch (e) { console.warn('Failed to reset player state', e); }
+      // Reset inventory and equipment
+      try {
+        this.inventoryItems = [];
+        this.equippedWeapon = null; this.equippedShield = null; this.hasMeleeWeapon = false; this.hasShield = false;
+        this.collectedItems = {
+          meleeWeapon1: false, meleeWeapon2: false, meleeWeapon3: false,
+          shield1: false, shield2: false, shield3: false,
+          healthPotion1: false, healthPotion2: false, staminaTonic1: false
+        };
+      } catch (e) { console.warn('Failed to reset inventory', e); }
+      // Clear world layers and groups
+      try {
+        if (this.worldLayer) { try { this.worldLayer.destroy(true); } catch {} this.worldLayer = null; }
+        if (this.worldOverlayLayer) { try { this.worldOverlayLayer.destroy(true); } catch {} this.worldOverlayLayer = null; }
+        if (this.enemiesGroup) { try { this.enemiesGroup.clear(true, true); } catch {} }
+        if (this.boundaryRocks) { try { this.boundaryRocks.clear(true, true); } catch {} }
+        if (this.droppedItemsGroup) { try { this.droppedItemsGroup.clear(true, true); } catch {} }
+        // Clear maze walls/decor and cached layouts so mazes regenerate
+        try { if (this.mazeWalls) { try { this.mazeWalls.clear(true, true); } catch {} this.mazeWalls = null; } } catch {}
+        try { if (this.mazeDecor) { try { this.mazeDecor.clear(true, true); } catch {} this.mazeDecor = null; } } catch {}
+        try { this._mazeLayouts = {}; } catch {}
+        try { this.occupiedCells = new Set(); } catch {}
+        // Regenerate world seed so procedural content like mazes/gold placements change
+        try { this.worldSeed = ((Math.random() * 0xFFFFFFFF) >>> 0); } catch {}
+      } catch (e) { console.warn('Failed to clear world layers', e); }
+      // Reset visited maps and world placements
+      try { this.visitedMaps = new Set(); this.worldGoldPlacements = this.worldGoldPlacements || []; } catch (e) {}
+      // Recreate HUD and UI state
+      try {
+        const ui = this.scene.get(SCENES.UI);
+        if (ui && ui.scene.isActive()) {
+          ui.updateHealthBar(this.health, this.maxHealth);
+          ui.updateStaminaBar?.(this.stamina, this.maxStamina);
+          ui.updateGoldIngots?.(this.goldIngotsCount || 0, this.goldGoal || 11);
+          const w = this.wallet || { total: 0, counts: { copper: 0, silver: 0 } };
+          ui.updateCurrency?.(w.total || 0, w.counts.copper || 0, w.counts.silver || 0);
+        }
+      } catch (e) { console.warn('Failed to refresh HUD', e); }
+      // Reset player position and recreate map objects
+      try {
+        this.currentMap = this.startMapId;
+        const spawn = this.gridToWorld(Math.floor((this.worldPixelWidth / this.gridCellSize) / 2), Math.floor((this.worldPixelHeight / this.gridCellSize) / 2));
+        if (this.player) { this.player.x = spawn.x; this.player.y = spawn.y; }
+        // Reinitialize grid and world content
+        try { this.initializeGrid(); } catch (e) { /* ignore */ }
+        try { this.createMapObjects(); } catch (e) { console.warn('Failed to recreate map objects', e); }
+        try { this.visitedMaps.add(this.currentMap); } catch {}
+        // Equip starter weapon and update HUD
+        try { this.equipDefaultWeapon(); this.updateEquipmentHUD(); } catch (e) { console.warn('Failed to equip default weapon', e); }
+      } catch (e) { console.warn('Failed to reset player position/world', e); }
+      // Resume physics and tweens in case they were paused
+      try { this.physics.world.resume(); } catch {}
+      try { this.tweens.resumeAll(); } catch {}
+      console.log('In-memory restart complete.');
     }
 
     pickupMeleeWeapon(player, meleeWeapon) {
@@ -630,41 +724,15 @@ export class MainScene extends Phaser.Scene {
           // Equip default starter weapon after UI is ready
           this.equipDefaultWeapon();
 
-          // Add a second default weapon to the inventory (does not auto-equip)
+          // Starting inventory: only the default starter weapon is provided. Shields/potions removed.
+          // Ensure collectedItems flags for the removed items are false
           try {
-            const secondWeapon = {
-              type: 'weapon',
-              subtype: 'basic',
-              name: 'Iron Shank',
-              color: this.getWeaponColor('basic'),
-              size: this.getWeaponSize('basic'),
-              swingDuration: this.getWeaponSwingDuration('basic')
-            };
-            this.addToInventory(secondWeapon);
-            this.collectedItems.meleeWeapon2 = true;
-          } catch (e) { console.error('Failed to add second weapon to starting inventory', e); }
-
-          // Add two shields to the inventory and mark them collected
-          try {
-            const shieldA = { type: 'shield', subtype: 'basic', name: 'Wooden Shield', color: this.getShieldColor('basic'), size: this.getShieldSize('basic') };
-            const shieldB = { type: 'shield', subtype: 'light', name: 'Buckler', color: this.getShieldColor('light'), size: this.getShieldSize('light') };
-            this.addToInventory(shieldA);
-            this.addToInventory(shieldB);
-            this.collectedItems.shield1 = true;
-            this.collectedItems.shield2 = true;
-            // Auto-equip one shield if none equipped
-            if (!this.equippedShield) this.equipShield(shieldA);
-          } catch (e) { console.error('Failed to add shields to starting inventory', e); }
-
-          // Add two consumable potions (health + stamina) and mark them collected
-          try {
-            const healthPotion = { type: 'consumable', name: 'Health Potion', healAmount: 25, description: 'Restores 25 HP' };
-            const staminaTonic = { type: 'consumable', name: 'Stamina Tonic', staminaAmount: 50, description: 'Restores 50 Stamina' };
-            this.addToInventory(healthPotion);
-            this.addToInventory(staminaTonic);
-            this.collectedItems.healthPotion1 = true;
-            this.collectedItems.staminaTonic1 = true;
-          } catch (e) { console.error('Failed to add potions to starting inventory', e); }
+            this.collectedItems.meleeWeapon2 = false;
+            this.collectedItems.shield1 = false;
+            this.collectedItems.shield2 = false;
+            this.collectedItems.healthPotion1 = false;
+            this.collectedItems.staminaTonic1 = false;
+          } catch (e) { /* ignore */ }
 
           // Force update the equipment HUD after a brief delay
           this.time.delayedCall(10, () => {
@@ -806,9 +874,9 @@ export class MainScene extends Phaser.Scene {
       this.input.keyboard.on('keydown-R', (event) => {
         if (event?.preventDefault) event.preventDefault();
         if (event?.stopPropagation) event.stopPropagation();
-        // If a win modal is active, reload the page to restart the game
-        if (this.winModal) {
-          try { window?.location?.reload?.(); } catch (e) { console.log('Restart requested'); }
+        // If a win or death modal is active, trigger an in-game restart without full reload
+        if (this.winModal || this.deathModal) {
+          try { this.restartGame(); } catch (e) { try { window?.location?.reload?.(); } catch {} }
         }
       });
 
@@ -1118,16 +1186,42 @@ export class MainScene extends Phaser.Scene {
           try { this.collisionDebugGfx.setDepth(500); } catch {}
         }
         this.collisionDebugGfx.setVisible(true);
+        // If Arcade Physics supports runtime debug drawing, wire it up to use our graphics object
+        try {
+          if (this.physics && this.physics.world) {
+            // Assign the graphics object so world.drawDebug can use it
+            try { this.physics.world.debugGraphic = this.collisionDebugGfx; } catch {}
+            // Enable debug drawing flag if present
+            try { if (typeof this.physics.world.drawDebug === 'boolean') this.physics.world.drawDebug = true; } catch {}
+          }
+        } catch (e) {}
       } else {
         if (this.collisionDebugGfx) {
           try { this.collisionDebugGfx.clear(); this.collisionDebugGfx.setVisible(false); } catch {}
         }
+        // Disable physics world debug if we enabled it
+        try {
+          if (this.physics && this.physics.world) {
+            try { if (typeof this.physics.world.drawDebug === 'boolean') this.physics.world.drawDebug = false; } catch {}
+            try { if (this.physics.world.debugGraphic === this.collisionDebugGfx) this.physics.world.debugGraphic = null; } catch {}
+          }
+        } catch (e) {}
       }
     }
 
     _redrawCollisionDebugOverlay() {
       const g = this.collisionDebugGfx;
       if (!g) return;
+      // Prefer letting Arcade Physics draw debug bodies if available
+      try {
+        if (this.physics && this.physics.world && typeof this.physics.world.drawDebug === 'function') {
+          // Ensure the world has a debugGraphic to draw into
+          try { if (!this.physics.world.debugGraphic) this.physics.world.debugGraphic = g; } catch {}
+          try { this.physics.world.drawDebug(); return; } catch {}
+        }
+      } catch (e) {}
+
+      // Fallback: manual per-body outline drawing
       try { g.clear(); } catch {}
       try { g.lineStyle(1, 0xff0000, 1); } catch {}
       // Player body

@@ -156,11 +156,13 @@ function createSlime(scene: any, x: number, y: number, opts: any): Enemy {
   try { if (scene.textures && scene.textures.exists('blob')) texKey = 'blob'; } catch {}
   if (texKey) {
     const slime = scene.physics.add.sprite(x, y, texKey) as Enemy;
+    // Force display size to match previous generated texture (12x8)
+    try { slime.setDisplaySize(12, 8); } catch {}
     slime.enemyType = 'slime'; slime.setDepth(2);
     slime.maxHealth = opts.maxHealth ?? 18; slime.health = slime.maxHealth;
     slime.speed = opts.speed ?? 60; slime.damage = opts.damage ?? 6;
     slime.playerKnockback = opts.playerKnockback ?? 240; slime.playerKnockbackMs = opts.playerKnockbackMs ?? 240; slime.playerKnockbackDamping = opts.playerKnockbackDamping ?? 0.9; slime.playerIFrameMs = opts.playerIFrameMs ?? 400; slime.knockbackDamping = opts.knockbackDamping ?? 0.9; slime.postHitPauseMs = opts.postHitPauseMs ?? 300; slime.aggroRadius = opts.aggroRadius ?? 56; slime.deaggroRadius = opts.deaggroRadius ?? 110; slime.wanderCooldown = 0; slime.state = 'wander'; slime.persistentAcrossMaps = !!opts.persistentAcrossMaps;
-    if ((slime as any).body.setSize) (slime as any).body.setSize(12, 8);
+  if ((slime as any).body.setSize) { (slime as any).body.setSize(12, 8); if ((slime as any).body.setOffset) try { (slime as any).body.setOffset(0, 0); } catch {} }
     if (scene.worldLayer) { try { scene.worldLayer.add(slime); } catch {} }
     try { scene.physics.add.overlap(scene.player, slime, () => { attemptEnemyDamagePlayer(scene, slime); }); } catch {}
     return slime;
