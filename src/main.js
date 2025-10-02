@@ -399,7 +399,7 @@ export class MainScene extends Phaser.Scene {
     showDeathModal() {
       if (UIRegistry.anyOpen && UIRegistry.anyOpen()) return; // avoid stacking
       UIRegistry.open?.('death');
-      const modal = createModal(this, { coverHUD: true, depthBase: 800, outerMargin: 10, padTop: 20, padBottom: 18 });
+      const modal = createModal(this, { panelAlpha:0, coverHUD: true, depthBase: 800, outerMargin: 0, padTop: 20, padBottom: 18 });
       const title = addTitle(this, modal, 'DEAD', { fontSize: '20px', color: '#ff4444' });
       const msg = this.add.text(modal.center.x, modal.center.y, `You have died.`, { fontSize: '12px', color: '#ffffff', align: 'center', wordWrap: { width: modal.content.width() - 20 } }).setOrigin(0.5).setDepth(802);
       const hint = this.add.text(modal.center.x, modal.center.y + 100, 'Press R to restart', { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5, 1).setDepth(803);
@@ -1619,7 +1619,7 @@ export class MainScene extends Phaser.Scene {
     showWinModal() {
       if (UIRegistry.anyOpen && UIRegistry.anyOpen()) return; // avoid stacking
       UIRegistry.open?.('win');
-      const modal = createModal(this, { coverHUD: true, depthBase: 800, outerMargin: 10, padTop: 20, padBottom: 18 });
+      const modal = createModal(this, {panelAlpha:0, coverHUD: true, depthBase: 800, outerMargin: 0, padTop: 20, padBottom: 18 });
       const title = addTitle(this, modal, 'You Win!', { fontSize: '16px', color: '#ffff66' });
       const msg = this.add.text(modal.center.x, modal.center.y, `You collected all ${this.goldGoal} gold ingots!`, { fontSize: '12px', color: '#ffffff', align: 'center', wordWrap: { width: modal.content.width() - 20 } }).setOrigin(0.5).setDepth(802);
       const hint = this.add.text(modal.center.x, modal.center.y + 100, 'Press ESC to close, R to reset', { fontSize: '10px', color: '#ffffff' }).setOrigin(0.5, 1).setDepth(803);
