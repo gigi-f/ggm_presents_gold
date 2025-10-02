@@ -23,6 +23,7 @@ export function swingMeleeWeapon(scene: any) {
   console.log(`Swinging ${scene.meleeWeaponName} in direction:`, scene.lastDirection);
 
   let weaponColor = 0xc0c0c0;
+  // Default weapon visual size; will be overridden by equippedWeapon.size or actual displayed sprite size
   let weaponSize = { width: 20, height: 4 };
   let swingDuration = 200;
   if (scene.equippedWeapon) {
@@ -37,15 +38,60 @@ export function swingMeleeWeapon(scene: any) {
     }
   }
 
+  // Ensure we create a visual that matches equipped weapon drawing when possible
+  const desiredW = Math.round((weaponSize && weaponSize.width) ? weaponSize.width : 20);
+  const desiredH = Math.round((weaponSize && weaponSize.height) ? weaponSize.height : 4);
+  const eqSpriteKey = scene.equippedWeapon && scene.equippedWeapon.spriteKey ? scene.equippedWeapon.spriteKey : null;
+  const hasTexture = eqSpriteKey && scene.textures && scene.textures.exists && scene.textures.exists(eqSpriteKey);
   if (!scene.meleeWeaponSprite) {
     // Create sprite anchored at inner edge (origin.x = 0) so it can pivot from the player's edge
-    scene.meleeWeaponSprite = scene.add.rectangle(scene.player.x, scene.player.y, weaponSize.width, weaponSize.height, weaponColor);
+    if (hasTexture) {
+      scene.meleeWeaponSprite = scene.add.image(scene.player.x, scene.player.y, eqSpriteKey);
+      try { scene.meleeWeaponSprite.setDisplaySize(desiredW, desiredH); } catch {}
+    } else {
+      scene.meleeWeaponSprite = scene.add.rectangle(scene.player.x, scene.player.y, desiredW, desiredH, weaponColor);
+    }
     scene.meleeWeaponSprite.setOrigin(0, 0.5);
     scene.meleeWeaponSprite.setDepth(2);
+    // Give the weapon a physics body so we can detect collisions with maze walls
+    try {
+      if (scene.physics && scene.physics.add && !scene.meleeWeaponSprite.body) {
+        scene.physics.add.existing(scene.meleeWeaponSprite);
+        if (scene.meleeWeaponSprite.body) {
+          try { scene.meleeWeaponSprite.body.setAllowGravity?.(false); } catch {}
+          try { scene.meleeWeaponSprite.body.setImmovable?.(true); } catch {}
+          try { scene.meleeWeaponSprite.body.setSize(desiredW, desiredH, true); } catch {}
+        }
+      }
+    } catch (e) {}
+    // Create a one-time overlap between weapon and maze walls to cancel swings when player hits a wall
+    try {
+      if (!scene._weaponWallCollider && scene.mazeWalls && scene.physics && scene.physics.add) {
+        scene._weaponWallCollider = scene.physics.add.overlap(scene.meleeWeaponSprite, scene.mazeWalls, (_w: any, _wall: any) => {
+          try { onWeaponHitsWall(scene); } catch (e) {}
+        });
+      }
+    } catch (e) {}
   } else {
-    scene.meleeWeaponSprite.setSize(weaponSize.width, weaponSize.height);
-    scene.meleeWeaponSprite.setFillStyle(weaponColor);
+    // Update existing sprite to match equipped weapon (image) or fallback rectangle
+    if (hasTexture && scene.meleeWeaponSprite.setTexture) {
+      try { scene.meleeWeaponSprite.setTexture(eqSpriteKey); } catch {}
+      try { scene.meleeWeaponSprite.setDisplaySize(desiredW, desiredH); } catch {}
+    } else if (scene.meleeWeaponSprite.setSize) {
+      scene.meleeWeaponSprite.setSize(desiredW, desiredH);
+      try { scene.meleeWeaponSprite.setFillStyle(weaponColor); } catch {}
+    } else {
+      // last resort: try to set display size
+      try { scene.meleeWeaponSprite.setDisplaySize(desiredW, desiredH); } catch {}
+    }
   }
+
+  // If the displayed object has actual displayWidth/displayHeight, prefer those for hit reach
+  try {
+    if (scene.meleeWeaponSprite && scene.meleeWeaponSprite.displayWidth) {
+      weaponSize = { width: scene.meleeWeaponSprite.displayWidth, height: scene.meleeWeaponSprite.displayHeight };
+    }
+  } catch {}
 
   scene.meleeWeaponSprite.setVisible(true);
   // Position the weapon's inner edge at the player's edge in the facing direction
@@ -56,15 +102,20 @@ export function swingMeleeWeapon(scene: any) {
   else if (scene.lastDirection === 'up') { startAngle = -135; endAngle = -45; }
   else if (scene.lastDirection === 'down') { startAngle = 45; endAngle = 135; }
 
-  scene.meleeWeaponSprite.setRotation(Phaser.Math.DegToRad(startAngle));
-  scene.tweens.add({
-    targets: scene.meleeWeaponSprite,
-    rotation: Phaser.Math.DegToRad(endAngle),
-    duration: swingDuration,
-    ease: 'Power2',
-    onUpdate: () => updateMeleeWeaponPosition(scene),
-    onComplete: () => { scene.meleeWeaponSprite.setVisible(false); }
-  });
+    scene.meleeWeaponSprite.setRotation(Phaser.Math.DegToRad(startAngle));
+  // Store a reference to the tween so we can stop it if the weapon hits a wall
+  try {
+    scene._meleeWeaponTween = scene.tweens.add({
+      targets: scene.meleeWeaponSprite,
+      rotation: Phaser.Math.DegToRad(endAngle),
+      duration: swingDuration,
+      ease: 'Power2',
+      onUpdate: () => updateMeleeWeaponPosition(scene),
+      onComplete: () => { try { scene.meleeWeaponSprite.setVisible(false); } catch (e) {} }
+    });
+  } catch (e) {
+    try { scene.meleeWeaponSprite.setVisible(false); } catch (e) {}
+  }
 
   // Damage enemies within melee arc during the swing window
   const baseDamage = (() => {
@@ -201,13 +252,102 @@ export function swingMeleeWeapon(scene: any) {
     }
   } catch {}
 
-  scene.time.delayedCall(300, () => { scene.meleeWeaponSwinging = false; });
+  // Mark the end of swinging; keep a handle so we can cancel it on wall-hit
+  try {
+    if (scene._meleeSwingEndTimer) { try { scene._meleeSwingEndTimer.remove?.(); } catch {} }
+    scene._meleeSwingEndTimer = scene.time.delayedCall(300, () => { scene.meleeWeaponSwinging = false; });
+  } catch (e) { scene.time.delayedCall(300, () => { scene.meleeWeaponSwinging = false; }); }
 }
 
 export function updateMeleeWeaponPosition(scene: any) {
   if (!scene.meleeWeaponSprite || !scene.meleeWeaponSwinging) return;
   // Keep the inner edge anchored at the player's edge while swinging
   positionWeaponAtPlayerEdge(scene);
+}
+
+// Called when the melee weapon overlaps a maze wall. Cancels the swing and pushes the player back one grid cell.
+function onWeaponHitsWall(scene: any) {
+  if (!scene.meleeWeaponSwinging) return;
+  scene.meleeWeaponSwinging = false;
+  // stop tween if running
+  try { scene._meleeWeaponTween?.stop?.(); } catch {}
+  try { if (scene.meleeWeaponSprite) scene.meleeWeaponSprite.setVisible(false); } catch {}
+  // cancel the swing-end timer
+  try { scene._meleeSwingEndTimer?.remove?.(); } catch {}
+
+  // Compute push-back direction (opposite of facing)
+  let nx = 1, ny = 0;
+  switch (scene.lastDirection) {
+    case 'left': nx = -1; ny = 0; break;
+    case 'up': nx = 0; ny = -1; break;
+    case 'down': nx = 0; ny = 1; break;
+    default: nx = 1; ny = 0; // right
+  }
+  const cs = scene.gridCellSize || 16;
+  const player = scene.player;
+  if (!player) return;
+  const gx = Math.floor(player.x / cs);
+  const gy = Math.floor(player.y / cs);
+  const destGX = gx - nx;
+  const destGY = gy - ny;
+  const inBounds = (destGX >= 0 && destGX < (scene.gridWidth || 0) && destGY >= 0 && destGY < (scene.gridHeight || 0));
+  const occupied = scene.occupiedCells && scene.occupiedCells.has(`${destGX},${destGY}`);
+  if (inBounds && !occupied) {
+    const worldX = destGX * cs + cs / 2;
+    const worldY = destGY * cs + cs / 2;
+    try {
+  // Cancel any existing player push tween
+  try { scene._playerPushTween?.stop?.(); } catch {}
+  // If the player has a physics body, disable it for the tween to avoid conflicts
+  try { if (player.body) { player.body.enable = false; } } catch {}
+      // Tween the player's position to the target cell for a smooth push animation
+      scene._playerPushTween = scene.tweens.add({
+        targets: player,
+        x: worldX,
+        y: worldY,
+        duration: 140,
+        ease: 'Power2',
+        onComplete: () => {
+          // Re-enable/realign physics body after tween
+          try {
+            if (player.body) {
+              // Prefer resetting the body if available
+              try { if (typeof player.body.reset === 'function') player.body.reset(worldX, worldY); } catch {}
+              try { player.body.enable = true; } catch {}
+            }
+          } catch (e) {}
+        }
+      });
+    } catch (e) {
+      // Fallback to instant placement
+      try { player.x = worldX; player.y = worldY; } catch {}
+      try { if (player.body && typeof player.body.reset === 'function') player.body.reset(worldX, worldY); } catch {}
+    }
+  } else {
+    // If blocked, nudge the player a small distance opposite the facing direction
+    try {
+      const nudge = Math.max(4, Math.floor(cs * 0.4));
+      const targetX = player.x - nx * nudge;
+      const targetY = player.y - ny * nudge;
+      // Cancel any existing player push tween
+      try { scene._playerPushTween?.stop?.(); } catch {}
+      try { if (player.body) player.body.enable = false; } catch {}
+      scene._playerPushTween = scene.tweens.add({
+        targets: player,
+        x: targetX,
+        y: targetY,
+        duration: 120,
+        ease: 'Sine.easeOut',
+        onComplete: () => {
+          try { if (player.body) { player.body.enable = true; try { player.body.velocity?.set?.(0,0); } catch {} } } catch {}
+        }
+      });
+    } catch (e) {}
+  }
+  // Optional brief stun/lock to avoid immediate re-swing
+  try {
+    scene._justPushedBackUntil = (scene.time?.now ?? 0) + 180;
+  } catch {}
 }
 
 // Helper: compute facing vector and anchor the weapon's inner edge at the player's edge
