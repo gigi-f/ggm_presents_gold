@@ -18,6 +18,11 @@ interface TerrainCell {
 
 export function getBiomeForMap(scene: any, mapId?: MapId): BiomeType {
   const id = mapId ?? scene.currentMap;
+  // Prefer a per-map biome property if present (created by overworld generator)
+  try {
+    const m = scene.maps?.[id];
+    if (m && typeof m.biome === 'string') return m.biome as BiomeType;
+  } catch {}
   switch (id) {
     case MAP_IDS.OVERWORLD_00: return 'forest';
     case MAP_IDS.OVERWORLD_01: return 'plains';

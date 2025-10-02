@@ -34,7 +34,43 @@ export class MainScene extends Phaser.Scene {
     this.playerDisplayScale = 1.5;
 
   // State flags
-    this.currentMap = MAP_IDS.OVERWORLD_01;
+    // Generate a 5x5 overworld grid of maps with random biomes
+    // Map ids are `overworld_r_c` where r and c are 0-based row/col indices
+    this.overworldRows = 5;
+    this.overworldCols = 5;
+    this.maps = {};
+    const biomeTypes = ['forest', 'plains', 'desert'];
+    const rand = () => Math.random();
+    for (let r = 0; r < this.overworldRows; r++) {
+      for (let c = 0; c < this.overworldCols; c++) {
+        const id = `overworld_${r}_${c}`;
+        const biome = biomeTypes[Math.floor(rand() * biomeTypes.length)];
+        // Biome background colors (consistent):
+        // desert: beige, plains: pale green, forest: green-blue
+        let color = 0xCFE8C7; // plains (pale green)
+        if (biome === 'desert') color = 0xD2B48C; // beige
+        else if (biome === 'forest') color = 0x2EA7A0; // green-blue
+        this.maps[id] = { type: 'overworld', biome, color, exits: {}, doors: {} };
+      }
+    }
+    // Wire exits between adjacent tiles
+    for (let r = 0; r < this.overworldRows; r++) {
+      for (let c = 0; c < this.overworldCols; c++) {
+        const id = `overworld_${r}_${c}`;
+        const exits = {};
+        if (c < this.overworldCols - 1) exits.right = `overworld_${r}_${c+1}`;
+        if (c > 0) exits.left = `overworld_${r}_${c-1}`;
+        if (r > 0) exits.up = `overworld_${r-1}_${c}`;
+        if (r < this.overworldRows - 1) exits.down = `overworld_${r+1}_${c}`;
+        this.maps[id].exits = exits;
+      }
+    }
+    // Keep shop map as a separate map
+    this.maps[MAP_IDS.SHOP_01] = { type: 'shop', color: 0x8b5a2b, exits: {}, doors: {} };
+    // Set starting map to the center tile
+    const startR = Math.floor(this.overworldRows / 2), startC = Math.floor(this.overworldCols / 2);
+    this.startMapId = `overworld_${startR}_${startC}`;
+    this.currentMap = this.startMapId;
     this.transitionLock = false;
     this.isScrolling = false;
     this.worldLayer = null;
@@ -103,78 +139,63 @@ export class MainScene extends Phaser.Scene {
       [MAP_IDS.SHOP_01]:      { gx: 1, gy: 2, type: 'shop' }
     };
 
-    // Map graph
-    this.maps = {
-      [MAP_IDS.OVERWORLD_00]: {
-        type: 'overworld',
-        color: 0x2e7d32, // forest green
-        exits: { down: MAP_IDS.OVERWORLD_01 },
-        doors: {
-          [DOOR_IDS.SOUTH_ENTRY_A]: { targetMap: MAP_IDS.OVERWORLD_01, targetDoor: DOOR_IDS.NORTH_EXIT_A }
-        }
-      },
-      [MAP_IDS.OVERWORLD_01]: {
-        type: 'overworld',
-        color: 0x66bb6a, // plains green
-        exits: { right: MAP_IDS.OVERWORLD_02, up: MAP_IDS.OVERWORLD_00, down: MAP_IDS.OVERWORLD_03 },
-        doors: {
-          [DOOR_IDS.SHOP_DOOR_01]: { targetMap: MAP_IDS.SHOP_01, targetDoor: DOOR_IDS.SHOP_EXIT_01 },
-          [DOOR_IDS.EAST_EXIT_A]: { targetMap: MAP_IDS.OVERWORLD_02, targetDoor: DOOR_IDS.WEST_ENTRY_A },
-          [DOOR_IDS.EAST_EXIT_B]: { targetMap: MAP_IDS.OVERWORLD_02, targetDoor: DOOR_IDS.WEST_ENTRY_B },
-          [DOOR_IDS.NORTH_EXIT_A]: { targetMap: MAP_IDS.OVERWORLD_00, targetDoor: DOOR_IDS.SOUTH_ENTRY_A },
-          [DOOR_IDS.SOUTH_EXIT_A]: { targetMap: MAP_IDS.OVERWORLD_03, targetDoor: DOOR_IDS.NORTH_ENTRY_A }
-        }
-      },
-      [MAP_IDS.OVERWORLD_03]: {
-        type: 'overworld',
-        color: 0x88cc77, // slightly different plains hue
-        exits: { up: MAP_IDS.OVERWORLD_01 },
-        doors: {
-          [DOOR_IDS.NORTH_ENTRY_A]: { targetMap: MAP_IDS.OVERWORLD_01, targetDoor: DOOR_IDS.SOUTH_EXIT_A }
-        }
-      },
-      [MAP_IDS.OVERWORLD_02]: {
-        type: 'overworld',
-        color: 0xD2B48C, // desert beige
-        exits: { left: MAP_IDS.OVERWORLD_01 },
-        doors: {
-          [DOOR_IDS.WEST_ENTRY_A]: { targetMap: MAP_IDS.OVERWORLD_01, targetDoor: DOOR_IDS.EAST_EXIT_A },
-          [DOOR_IDS.WEST_ENTRY_B]: { targetMap: MAP_IDS.OVERWORLD_01, targetDoor: DOOR_IDS.EAST_EXIT_B }
-        }
-      },
-      [MAP_IDS.SHOP_01]: {
-        type: 'shop',
-        color: 0x8b5a2b,
-        exits: {},
-        doors: {
-          [DOOR_IDS.SHOP_EXIT_01]: { targetMap: MAP_IDS.OVERWORLD_01, targetDoor: DOOR_IDS.SHOP_DOOR_01 }
-        }
-      }
-    };
+    // Map graph was generated earlier above for the 5x5 overworld
 
-    // Door registry
-    this.doorRegistry = {
-      [MAP_IDS.OVERWORLD_00]: {
-        [DOOR_IDS.SOUTH_ENTRY_A]: { gridX: 12, gridY: 17, type: 'edge_south', entranceHalfWidth: 1 }
-      },
-      [MAP_IDS.OVERWORLD_01]: {
-        [DOOR_IDS.SHOP_DOOR_01]: { gridX: 4, gridY: 8, type: 'building_entrance' },
-        [DOOR_IDS.EAST_EXIT_A]: { gridX: 19, gridY: 5, type: 'edge_east', entranceHalfWidth: 0 },
-        [DOOR_IDS.EAST_EXIT_B]: { gridX: 19, gridY: 10, type: 'edge_east', entranceHalfWidth: 1 },
-        [DOOR_IDS.NORTH_EXIT_A]: { gridX: 12, gridY: 0, type: 'edge_north', entranceHalfWidth: 2 },
-        [DOOR_IDS.SOUTH_EXIT_A]: { gridX: 12, gridY: 17, type: 'edge_south', entranceHalfWidth: 1 }
-      },
-      [MAP_IDS.OVERWORLD_03]: {
-        [DOOR_IDS.NORTH_ENTRY_A]: { gridX: 12, gridY: 0, type: 'edge_north', entranceHalfWidth: 1 }
-      },
-      [MAP_IDS.SHOP_01]: {
-        [DOOR_IDS.SHOP_EXIT_01]: { gridX: 10, gridY: 16, type: 'building_exit' }
-      },
-      [MAP_IDS.OVERWORLD_02]: {
-        [DOOR_IDS.WEST_ENTRY_A]: { gridX: 0, gridY: 5, type: 'edge_west', entranceHalfWidth: 0 },
-        [DOOR_IDS.WEST_ENTRY_B]: { gridX: 0, gridY: 10, type: 'edge_west', entranceHalfWidth: 1 }
+    // Programmatically build doorRegistry for generated overworld tiles
+    this.doorRegistry = {};
+    const Wg = Math.floor(this.worldPixelWidth / this.gridCellSize);
+    const Hg = Math.floor(this.worldPixelHeight / this.gridCellSize);
+    const centerGX = Math.floor(Wg / 2);
+    const centerGY = Math.floor(Hg / 2);
+    for (let r = 0; r < (this.overworldRows || 1); r++) {
+      for (let c = 0; c < (this.overworldCols || 1); c++) {
+        const id = `overworld_${r}_${c}`;
+        this.doorRegistry[id] = {};
+        this.maps[id].doors = this.maps[id].doors || {};
+        // North
+        if (r > 0) {
+          const myDoor = `edge_north_${r}_${c}`;
+          const otherDoor = `edge_south_${r-1}_${c}`;
+          this.doorRegistry[id][myDoor] = { gridX: centerGX, gridY: 0, type: 'edge_north', entranceHalfWidth: 1 };
+          this.maps[id].doors[myDoor] = { targetMap: `overworld_${r-1}_${c}`, targetDoor: otherDoor };
+        }
+        // South
+        if (r < (this.overworldRows - 1)) {
+          const myDoor = `edge_south_${r}_${c}`;
+          const otherDoor = `edge_north_${r+1}_${c}`;
+          this.doorRegistry[id][myDoor] = { gridX: centerGX, gridY: Hg - 1, type: 'edge_south', entranceHalfWidth: 1 };
+          this.maps[id].doors[myDoor] = { targetMap: `overworld_${r+1}_${c}`, targetDoor: otherDoor };
+        }
+        // West
+        if (c > 0) {
+          const myDoor = `edge_west_${r}_${c}`;
+          const otherDoor = `edge_east_${r}_${c-1}`;
+          this.doorRegistry[id][myDoor] = { gridX: 0, gridY: centerGY, type: 'edge_west', entranceHalfWidth: 1 };
+          this.maps[id].doors[myDoor] = { targetMap: `overworld_${r}_${c-1}`, targetDoor: otherDoor };
+        }
+        // East
+        if (c < (this.overworldCols - 1)) {
+          const myDoor = `edge_east_${r}_${c}`;
+          const otherDoor = `edge_west_${r}_${c+1}`;
+          this.doorRegistry[id][myDoor] = { gridX: Wg - 1, gridY: centerGY, type: 'edge_east', entranceHalfWidth: 1 };
+          this.maps[id].doors[myDoor] = { targetMap: `overworld_${r}_${c+1}`, targetDoor: otherDoor };
+        }
       }
-    };
+    }
+    // Add shop door on start map (center) and matching exit on shop map
+    const shopMap = MAP_IDS.SHOP_01;
+    if (!this.doorRegistry[shopMap]) this.doorRegistry[shopMap] = {};
+    // Ensure startMapId exists
+    if (this.startMapId) {
+      if (!this.doorRegistry[this.startMapId]) this.doorRegistry[this.startMapId] = {};
+      this.doorRegistry[this.startMapId][DOOR_IDS.SHOP_DOOR_01] = { gridX: Math.max(2, Math.min(Wg - 2, 4)), gridY: Math.max(2, Math.min(Hg - 2, 8)), type: 'building_entrance' };
+      this.maps[this.startMapId].doors = this.maps[this.startMapId].doors || {};
+      this.maps[this.startMapId].doors[DOOR_IDS.SHOP_DOOR_01] = { targetMap: shopMap, targetDoor: DOOR_IDS.SHOP_EXIT_01 };
+      // Shop exit back to start
+      this.doorRegistry[shopMap][DOOR_IDS.SHOP_EXIT_01] = { gridX: Math.max(2, Math.min(Wg - 2, 10)), gridY: Math.max(2, Math.min(Hg - 2, 16)), type: 'building_exit' };
+      this.maps[shopMap].doors = this.maps[shopMap].doors || {};
+      this.maps[shopMap].doors[DOOR_IDS.SHOP_EXIT_01] = { targetMap: this.startMapId, targetDoor: DOOR_IDS.SHOP_DOOR_01 };
+    }
 
     this.activeDoors = {};
     this.collectedItems = {

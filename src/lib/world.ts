@@ -502,7 +502,8 @@ export function createMapObjects(scene: any, options: any = {}) {
     }
   }
 
-  if (scene.currentMap === MAP_IDS.OVERWORLD_01) {
+  // Place starter items on the designated starting map (center of generated overworld)
+  if (scene.currentMap === (scene.startMapId || null)) {
     scene.treeTrunks.clear();
     const spawnCurrency = (id: string, gx: number, gy: number, type: string) => {
       if (scene.collectedCurrency && scene.collectedCurrency.has(id)) return;
