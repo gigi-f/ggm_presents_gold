@@ -590,6 +590,12 @@ export class MainScene extends Phaser.Scene {
         // If require/import isn't available in this environment, attempt to load by URL fallback
         try { this.load.image('shopkeeper', 'assets/sprites/shopkeeper.png'); } catch {}
       }
+      // Preload small blob sprite for slimes if present
+      try {
+        this.load.image('blob', require('../assets/sprites/blob.png'));
+      } catch (e) {
+        try { this.load.image('blob', 'assets/sprites/blob.png'); } catch {}
+      }
     }
   
   create() {

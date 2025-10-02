@@ -24,7 +24,7 @@ const config = {
   scene: [MainScene, UIScene, TestScene],
   pixelArt: true,
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.NONE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     zoom: 2
   },

@@ -23,7 +23,7 @@ function getItemDescription(item: any): string {
   if (!item) return 'Unknown item.';
   if (item.type === 'weapon') {
     const base: Record<string, string> = {
-      starter: 'A rusty starter pickaxe. Weak but reliable.',
+      starter: 'A rusty starter dagger. Weak but reliable.',
       basic: 'A basic melee weapon. Balanced for general use.',
       strong: 'A heavy weapon that deals strong hits but is slower.',
       fast: 'A light weapon that swings quickly but for less damage.'
@@ -153,7 +153,7 @@ export function updateEquipmentHUD(scene: any): void {
 }
 
 export function equipDefaultWeapon(scene: any): void {
-  const defaultWeapon = { type: 'weapon', subtype: 'starter', name: 'Rusty Pickaxe', color: 0x666666, size: { width: 6, height: 3 }, swingDuration: 350 };
+  const defaultWeapon = { type: 'weapon', subtype: 'starter', name: 'Rusty Dagger', color: 0x666666, size: { width: 6, height: 3 }, swingDuration: 350 };
   addToInventory(scene, defaultWeapon);
   equipWeapon(scene, defaultWeapon);
   console.log('Equipped default starter weapon: Rusty Pickaxe');
