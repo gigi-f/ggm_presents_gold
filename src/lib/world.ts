@@ -661,7 +661,8 @@ export function createMapObjects(scene: any, options: any = {}) {
   if (scene.enemiesGroup) {
     const blockNonBats = (a: any, b: any) => {
       const e = a?.enemyType ? a : (b?.enemyType ? b : null);
-      return !(e && e.enemyType === 'bat');
+      // Only block if not bat and not lad
+      return !(e && (e.enemyType === 'bat' || e.enemyType === 'lad'));
     };
     scene.physics.add.collider(scene.enemiesGroup, scene.boundaryRocks, null, blockNonBats, scene);
     scene.physics.add.collider(scene.enemiesGroup, scene.treeTrunks, null, blockNonBats, scene);
