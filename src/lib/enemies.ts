@@ -255,6 +255,17 @@ export function killEnemy(scene: any, enemy: Enemy) {
     }
   } catch {}
 
+  // Special: If Lad is killed and has a stolen gold ingot, drop it at death position
+  if (enemy.enemyType === 'lad' && enemy.stolenGoldId) {
+    try {
+      const q = World.quantizeWorldPosition(scene, enemy.x, enemy.y, { markOccupied: false });
+      const gold = World.placeObjectOnGrid(scene, q.gridX, q.gridY, 'goldIngot', null, { goldId: enemy.stolenGoldId, width: 12, height: 6, color: 0xffd700 });
+      if (gold && scene.physics && scene.player) {
+        scene.physics.add.overlap(scene.player, gold, scene.pickupGoldIngot, null, scene);
+      }
+    } catch {}
+  }
+
   try { (enemy as any).destroy(); } catch {}
 }
 
@@ -269,6 +280,8 @@ function attemptEnemyDamagePlayer(scene: any, enemy: Enemy) {
     scene.showToast?.('Lad stole a gold ingot!');
     // Set Lad to run away and escape
     enemy.state = 'escape';
+    // Track which gold was stolen for later drop
+    enemy.stolenGoldId = stolenId;
     // Pick escape direction: away from player, toward nearest map edge
     const px = scene.player?.x ?? enemy.x;
     const py = scene.player?.y ?? enemy.y;
@@ -379,8 +392,8 @@ function createLad(scene: any, x: number, y: number, opts: any): Enemy {
   const lad = scene.physics.add.sprite(x, y, 'lad_right') as Enemy;
   lad.enemyType = 'lad';
   lad.setDepth(2);
-  lad.maxHealth = opts.maxHealth ?? 22;
-  lad.health = lad.maxHealth;
+  lad.maxHealth = 1;
+  lad.health = 1;
   lad.speed = opts.speed ?? 80;
   lad.sprintSpeed = opts.sprintSpeed ?? 220;
   lad.damage = opts.damage ?? 8;
@@ -440,9 +453,31 @@ function updateLad(scene: any, lad: Enemy, time: number) {
       lad.setTexture(dx < 0 ? 'lad_left' : 'lad_right');
       lad.direction = dx < 0 ? 'left' : 'right';
     }
-    // If off map, destroy Lad
+    // If off map, destroy Lad and drop gold ingot
     const W = scene.worldPixelWidth, H = scene.worldPixelHeight;
     if (lad.x < -48 || lad.x > W + 48 || lad.y < -48 || lad.y > H + 48) {
+      // Only drop gold if Lad was escaping and had stolen gold
+      if ((lad as any).state === 'escape' && (lad as any).stolenGoldId) {
+        // Find a random available grid cell not occupied by the player
+        const playerGrid = scene.worldToGrid(scene, scene.player.x, scene.player.y);
+        const gridW = scene.gridWidth;
+        const gridH = scene.gridHeight;
+        const candidates = [];
+        for (let gx = 1; gx < gridW - 1; gx++) {
+          for (let gy = 1; gy < gridH - 1; gy++) {
+            if (gx === playerGrid.gridX && gy === playerGrid.gridY) continue;
+            if (scene.isGridCellAvailable(scene, gx, gy)) candidates.push({ gx, gy });
+          }
+        }
+        if (candidates.length > 0) {
+          const idx = Math.floor(Math.random() * candidates.length);
+          const { gx, gy } = candidates[idx];
+          // Place gold ingot with the stolen ID
+          if (scene.placeObjectOnGrid) {
+            scene.placeObjectOnGrid(scene, gx, gy, 'goldIngot', null, { goldId: (lad as any).stolenGoldId, width: 12, height: 6, color: 0xffd700 });
+          }
+        }
+      }
       try { lad.destroy(); } catch {}
     }
     return;
