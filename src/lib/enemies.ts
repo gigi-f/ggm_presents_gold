@@ -267,6 +267,28 @@ function attemptEnemyDamagePlayer(scene: any, enemy: Enemy) {
     scene.goldIngotsCount = Math.max(0, scene.goldIngotsCount - 1);
     try { scene.scene.get && scene.scene.get('UIScene')?.updateGoldIngots?.(scene.goldIngotsCount, scene.goldGoal); } catch {}
     scene.showToast?.('Lad stole a gold ingot!');
+    // Set Lad to run away and escape
+    enemy.state = 'escape';
+    // Pick escape direction: away from player, toward nearest map edge
+    const px = scene.player?.x ?? enemy.x;
+    const py = scene.player?.y ?? enemy.y;
+    const dx = enemy.x - px;
+    const dy = enemy.y - py;
+    // Find which edge is closest for escape
+    const W = scene.worldPixelWidth;
+    const H = scene.worldPixelHeight;
+    let targetX = enemy.x, targetY = enemy.y;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // Escape left or right
+      targetX = dx > 0 ? W + 40 : -40;
+      targetY = enemy.y;
+    } else {
+      // Escape up or down
+      targetX = enemy.x;
+      targetY = dy > 0 ? H + 40 : -40;
+    }
+    enemy.escapeTarget = { x: targetX, y: targetY };
+    enemy.escapeStart = scene.time?.now ?? 0;
     // Only steal, do not deal damage
     scene._nextPlayerHitAt = now + ((enemy as any).playerIFrameMs ?? 400);
     return true;
@@ -374,7 +396,14 @@ function createLad(scene: any, x: number, y: number, opts: any): Enemy {
   try { lad.setDisplaySize(32, 32); } catch {}
   if (scene.worldLayer) { try { scene.worldLayer.add(lad); } catch {} }
   // Overlap with player for damage
-  try { scene.physics.add.overlap(scene.player, lad, () => { attemptEnemyDamagePlayer(scene, lad); }); } catch {}
+  try {
+    scene.physics.add.overlap(scene.player, lad, () => {
+      // Only allow Lad to attack if not escaping
+      if (lad.state !== 'escape') {
+        attemptEnemyDamagePlayer(scene, lad);
+      }
+    });
+  } catch {}
   return lad;
 }
 
@@ -402,6 +431,23 @@ function updateLad(scene: any, lad: Enemy, time: number) {
       }
     }
   }
+  if ((lad as any).state === 'escape' && (lad as any).escapeTarget) {
+    const tx = (lad as any).escapeTarget.x, ty = (lad as any).escapeTarget.y;
+    const dx = tx - lad.x, dy = ty - lad.y; const len = Math.hypot(dx, dy) || 1;
+    body.setVelocity((dx/len) * ((lad as any).sprintSpeed ?? 220), (dy/len) * ((lad as any).sprintSpeed ?? 220));
+    // Face direction
+    if (Math.abs(dx) > Math.abs(dy)) {
+      lad.setTexture(dx < 0 ? 'lad_left' : 'lad_right');
+      lad.direction = dx < 0 ? 'left' : 'right';
+    }
+    // If off map, destroy Lad
+    const W = scene.worldPixelWidth, H = scene.worldPixelHeight;
+    if (lad.x < -48 || lad.x > W + 48 || lad.y < -48 || lad.y > H + 48) {
+      try { lad.destroy(); } catch {}
+    }
+    return;
+  }
+  // --- Aggro logic: only chase if not escaping ---
   if ((lad as any).state === 'sprint' && (lad as any).sprintTarget) {
     // Sprint toward initial target
     const tx = (lad as any).sprintTarget.x, ty = (lad as any).sprintTarget.y;
@@ -411,21 +457,38 @@ function updateLad(scene: any, lad: Enemy, time: number) {
       lad.setTexture(dx < 0 ? 'lad_left' : 'lad_right');
       lad.direction = dx < 0 ? 'left' : 'right';
     }
-    // If close to target, switch to chase
-    if (Phaser.Math.Distance.Between(lad.x, lad.y, tx, ty) < 12) {
+    // If close to target, immediately switch to chase (old logic)
+    // Instead: switch to chase only if not already in escape mode
+    if (Phaser.Math.Distance.Between(lad.x, lad.y, tx, ty) < 12 && (lad as any).state !== 'escape') {
       (lad as any).state = 'chase';
       (lad as any).sprintTarget = null;
     }
     return;
   }
-  // Aggro logic: always chase if can see player
-  if (canSeePlayer) {
+  if ((lad as any).state !== 'escape' && canSeePlayer) {
     (lad as any).state = 'chase';
     const dx = px - lad.x, dy = py - lad.y; const len = Math.hypot(dx, dy) || 1;
     body.setVelocity((dx/len) * ((lad as any).sprintSpeed ?? 220), (dy/len) * ((lad as any).sprintSpeed ?? 220));
     if (Math.abs(dx) > Math.abs(dy)) {
       lad.setTexture(dx < 0 ? 'lad_left' : 'lad_right');
       lad.direction = dx < 0 ? 'left' : 'right';
+    }
+    return;
+  }
+  // --- Escape logic ---
+  if ((lad as any).state === 'escape' && (lad as any).escapeTarget) {
+    const tx = (lad as any).escapeTarget.x, ty = (lad as any).escapeTarget.y;
+    const dx = tx - lad.x, dy = ty - lad.y; const len = Math.hypot(dx, dy) || 1;
+    body.setVelocity((dx/len) * ((lad as any).sprintSpeed ?? 220), (dy/len) * ((lad as any).sprintSpeed ?? 220));
+    // Face direction
+    if (Math.abs(dx) > Math.abs(dy)) {
+      lad.setTexture(dx < 0 ? 'lad_left' : 'lad_right');
+      lad.direction = dx < 0 ? 'left' : 'right';
+    }
+    // If off map, destroy Lad
+    const W = scene.worldPixelWidth, H = scene.worldPixelHeight;
+    if (lad.x < -48 || lad.x > W + 48 || lad.y < -48 || lad.y > H + 48) {
+      try { lad.destroy(); } catch {}
     }
     return;
   }
