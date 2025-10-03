@@ -17,9 +17,10 @@ import * as Inventory from './lib/inventory.js';
 import * as Combat from './lib/combat.js';
 import { initWallet, addToWallet, spendFromWallet, getItemPrice, getWalletTotal, getWeaponDisplayLength } from './lib/economy';
 // Using PNG sprites for the prospector in four directions
-import { updateEnemies } from './lib/enemies';
+import { updateEnemies, createEnemy } from './lib/enemies';
 import { createModal, addTitle, UI as UIRegistry } from './lib/ui';
 import * as RexUI from './ui/rex';
+import { getEdgeEntranceCells, gridToWorld } from './lib/world';
 
 export class MainScene extends Phaser.Scene {
   constructor() {
@@ -575,6 +576,16 @@ export class MainScene extends Phaser.Scene {
       // Update HUD
       try { this.scene.get(SCENES.UI)?.updateGoldIngots?.(this.goldIngotsCount, this.goldGoal); } catch {}
       console.log(`Collected GOLD ingot ${id || ''} -> ${this.goldIngotsCount}/${this.goldGoal}`);
+      // Spawn a Lad on a random perimeter wall cell
+      try {
+        const edgeCells = Array.from(getEdgeEntranceCells(this));
+        if (edgeCells.length > 0) {
+          const idx = Math.floor(Math.random() * edgeCells.length);
+          const [gx, gy] = edgeCells[idx].split(',').map(Number);
+          const { x, y } = gridToWorld(this, gx, gy);
+          createEnemy(this, 'lad', x, y, { sprintTarget: { x: this.player.x, y: this.player.y } });
+        }
+      } catch (e) { console.warn('Failed to spawn Lad:', e); }
       // Win check
       if (this.goldIngotsCount >= (this.goldGoal || 11)) {
         this.showWinModal?.();
@@ -689,6 +700,16 @@ export class MainScene extends Phaser.Scene {
         this.load.image('blob', require('../assets/sprites/blob.png'));
       } catch (e) {
         try { this.load.image('blob', 'assets/sprites/blob.png'); } catch {}
+      }
+      // Preload Lad enemy sprites
+      try {
+        this.load.image('lad_left', require('../assets/sprites/lad_left.png'));
+        this.load.image('lad_right', require('../assets/sprites/lad_right.png'));
+      } catch (e) {
+        try {
+          this.load.image('lad_left', 'assets/sprites/lad_left.png');
+          this.load.image('lad_right', 'assets/sprites/lad_right.png');
+        } catch {}
       }
     }
   

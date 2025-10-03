@@ -10,7 +10,7 @@ import * as World from './world';
 import { ENEMY_DROP_CHANCES } from './constants';
 
 export type Enemy = Phaser.Types.Physics.Arcade.SpriteWithDynamicBody & {
-  enemyType: 'bat' | 'slime' | 'wolf';
+  enemyType: 'bat' | 'slime' | 'wolf' | 'lad';
   maxHealth: number;
   health: number;
   damage: number;
@@ -24,13 +24,14 @@ export function ensureGroups(scene: any) {
   if (!scene.enemiesGroup) scene.enemiesGroup = scene.add.group();
 }
 
-export function createEnemy(scene: any, type: 'bat'|'slime'|'wolf', x: number, y: number, opts: any = {}): Enemy | null {
+export function createEnemy(scene: any, type: 'bat'|'slime'|'wolf'|'lad', x: number, y: number, opts: any = {}): Enemy | null {
   ensureGroups(scene);
   let enemy: Enemy | null = null;
   switch (type) {
     case 'bat': enemy = createBat(scene, x, y, opts); break;
     case 'slime': enemy = createSlime(scene, x, y, opts); break;
     case 'wolf': enemy = createWolf(scene, x, y, opts); break;
+    case 'lad': enemy = createLad(scene, x, y, opts); break;
     default: console.warn('Unknown enemy type:', type);
   }
   if (enemy) scene.enemiesGroup.add(enemy);
@@ -45,6 +46,7 @@ export function updateEnemies(scene: any, time: number) {
       case 'bat': updateBat(scene, enemy, time); break;
       case 'slime': updateSlime(scene, enemy, time); break;
       case 'wolf': updateWolf(scene, enemy, time); break;
+      case 'lad': updateLad(scene, enemy, time); break;
     }
   }
 }
@@ -258,6 +260,17 @@ export function killEnemy(scene: any, enemy: Enemy) {
 
 function attemptEnemyDamagePlayer(scene: any, enemy: Enemy) {
   const now = scene.time?.now ?? 0; if (scene._nextPlayerHitAt && now < scene._nextPlayerHitAt) return false;
+  if (enemy.enemyType === 'lad' && scene.goldIngotsCount && scene.goldIngotsCount > 0 && scene.collectedGoldIds && scene.collectedGoldIds.size > 0) {
+    // Steal one gold ingot
+    const stolenId = scene.collectedGoldIds.values().next().value;
+    scene.collectedGoldIds.delete(stolenId);
+    scene.goldIngotsCount = Math.max(0, scene.goldIngotsCount - 1);
+    try { scene.scene.get && scene.scene.get('UIScene')?.updateGoldIngots?.(scene.goldIngotsCount, scene.goldGoal); } catch {}
+    scene.showToast?.('Lad stole a gold ingot!');
+    // Only steal, do not deal damage
+    scene._nextPlayerHitAt = now + ((enemy as any).playerIFrameMs ?? 400);
+    return true;
+  }
   if (typeof scene.takeDamage === 'function') scene.takeDamage(enemy.damage ?? 1);
   scene._nextPlayerHitAt = now + ((enemy as any).playerIFrameMs ?? 400);
   try { if (scene.player?.setAlpha) { scene.player.setAlpha(0.7); scene.time.delayedCall(100, () => { try { scene.player.setAlpha(1); } catch {} }); } } catch {}
@@ -337,4 +350,95 @@ function updateWolf(scene: any, wolf: Enemy, time: number) {
 export function spawnWolfAtGrid(scene: any, gridX: number, gridY: number, opts: any = {}) {
   const { x, y } = scene.gridToWorld(gridX, gridY);
   return createEnemy(scene, 'wolf', x, y, { homeX: x, homeY: y, ...opts });
+}
+
+function createLad(scene: any, x: number, y: number, opts: any): Enemy {
+  // Use lad_left.png and lad_right.png for left/right facing
+  const lad = scene.physics.add.sprite(x, y, 'lad_right') as Enemy;
+  lad.enemyType = 'lad';
+  lad.setDepth(2);
+  lad.maxHealth = opts.maxHealth ?? 22;
+  lad.health = lad.maxHealth;
+  lad.speed = opts.speed ?? 80;
+  lad.sprintSpeed = opts.sprintSpeed ?? 220;
+  lad.damage = opts.damage ?? 8;
+  lad.state = opts.sprintTarget ? 'sprint' : 'wander';
+  lad.direction = 'right';
+  lad.wanderCooldown = 0;
+  lad.aggroRadius = opts.aggroRadius ?? 9999; // always see player
+  lad.deaggroRadius = opts.deaggroRadius ?? 99999;
+  lad.sprintTarget = opts.sprintTarget || null;
+  lad.sightLine = true;
+  lad.persistentAcrossMaps = !!opts.persistentAcrossMaps;
+  // Display size (match sprite asset)
+  try { lad.setDisplaySize(16, 16); } catch {}
+  if (scene.worldLayer) { try { scene.worldLayer.add(lad); } catch {} }
+  // Overlap with player for damage
+  try { scene.physics.add.overlap(scene.player, lad, () => { attemptEnemyDamagePlayer(scene, lad); }); } catch {}
+  return lad;
+}
+
+function updateLad(scene: any, lad: Enemy, time: number) {
+  const body = (lad as any).body; if (!body) return;
+  if ((lad as any).stunUntil && time < (lad as any).stunUntil) {
+    const vx = body.velocity.x; const vy = body.velocity.y;
+    const d = (lad as any).knockbackDamping ?? 0.9;
+    body.setVelocity(vx * d, vy * d);
+    if (Math.abs(body.velocity.x) < 2 && Math.abs(body.velocity.y) < 2) body.setVelocity(0, 0);
+    return;
+  }
+  const px = scene.player?.x ?? lad.x;
+  const py = scene.player?.y ?? lad.y;
+  // Sight line: if direct line to player (no wall blocking), always chase
+  let canSeePlayer = true;
+  if (scene.mazeWalls && scene.mazeWalls.getChildren) {
+    const ray = new Phaser.Geom.Line(lad.x, lad.y, px, py);
+    for (const wall of scene.mazeWalls.getChildren()) {
+      if (!wall?.body) continue;
+      const rect = new Phaser.Geom.Rectangle(wall.body.x, wall.body.y, wall.body.width, wall.body.height);
+      if (Phaser.Geom.Intersects.LineToRectangle(ray, rect)) {
+        canSeePlayer = false;
+        break;
+      }
+    }
+  }
+  if ((lad as any).state === 'sprint' && (lad as any).sprintTarget) {
+    // Sprint toward initial target
+    const tx = (lad as any).sprintTarget.x, ty = (lad as any).sprintTarget.y;
+    const dx = tx - lad.x, dy = ty - lad.y; const len = Math.hypot(dx, dy) || 1;
+    body.setVelocity((dx/len) * (lad as any).sprintSpeed, (dy/len) * (lad as any).sprintSpeed);
+    if (Math.abs(dx) > Math.abs(dy)) {
+      lad.setTexture(dx < 0 ? 'lad_left' : 'lad_right');
+      lad.direction = dx < 0 ? 'left' : 'right';
+    }
+    // If close to target, switch to chase
+    if (Phaser.Math.Distance.Between(lad.x, lad.y, tx, ty) < 12) {
+      (lad as any).state = 'chase';
+      (lad as any).sprintTarget = null;
+    }
+    return;
+  }
+  // Aggro logic: always chase if can see player
+  if (canSeePlayer) {
+    (lad as any).state = 'chase';
+    const dx = px - lad.x, dy = py - lad.y; const len = Math.hypot(dx, dy) || 1;
+    body.setVelocity((dx/len) * ((lad as any).sprintSpeed ?? 220), (dy/len) * ((lad as any).sprintSpeed ?? 220));
+    if (Math.abs(dx) > Math.abs(dy)) {
+      lad.setTexture(dx < 0 ? 'lad_left' : 'lad_right');
+      lad.direction = dx < 0 ? 'left' : 'right';
+    }
+    return;
+  }
+  // Otherwise, wander
+  if ((lad as any).state === 'wander') {
+    if (time >= (lad as any).wanderCooldown) {
+      (lad as any).wanderCooldown = time + 1000 + Math.random() * 800;
+      const angle = Math.random() * Math.PI * 2;
+      body.setVelocity(Math.cos(angle) * ((lad as any).speed * 0.6), Math.sin(angle) * ((lad as any).speed * 0.6));
+      lad.setTexture(body.velocity.x < 0 ? 'lad_left' : 'lad_right');
+      lad.direction = body.velocity.x < 0 ? 'left' : 'right';
+    }
+    body.setVelocity(body.velocity.x * 0.98, body.velocity.y * 0.98);
+  }
+  // Lad ignores maze/wall blocking: do not check isBlockedAt
 }
