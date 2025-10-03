@@ -371,7 +371,7 @@ function createLad(scene: any, x: number, y: number, opts: any): Enemy {
   lad.sightLine = true;
   lad.persistentAcrossMaps = !!opts.persistentAcrossMaps;
   // Display size (match sprite asset)
-  try { lad.setDisplaySize(16, 16); } catch {}
+  try { lad.setDisplaySize(32, 32); } catch {}
   if (scene.worldLayer) { try { scene.worldLayer.add(lad); } catch {} }
   // Overlap with player for damage
   try { scene.physics.add.overlap(scene.player, lad, () => { attemptEnemyDamagePlayer(scene, lad); }); } catch {}
