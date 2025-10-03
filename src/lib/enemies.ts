@@ -260,6 +260,7 @@ export function killEnemy(scene: any, enemy: Enemy) {
     try {
       const q = World.quantizeWorldPosition(scene, enemy.x, enemy.y, { markOccupied: false });
       const gold = World.placeObjectOnGrid(scene, q.gridX, q.gridY, 'goldIngot', null, { goldId: enemy.stolenGoldId, width: 12, height: 6, color: 0xffd700 });
+      if (gold) gold._droppedByLad = true;
       if (gold && scene.physics && scene.player) {
         scene.physics.add.overlap(scene.player, gold, scene.pickupGoldIngot, null, scene);
       }
@@ -474,7 +475,8 @@ function updateLad(scene: any, lad: Enemy, time: number) {
           const { gx, gy } = candidates[idx];
           // Place gold ingot with the stolen ID
           if (scene.placeObjectOnGrid) {
-            scene.placeObjectOnGrid(scene, gx, gy, 'goldIngot', null, { goldId: (lad as any).stolenGoldId, width: 12, height: 6, color: 0xffd700 });
+            const obj = scene.placeObjectOnGrid(scene, gx, gy, 'goldIngot', null, { goldId: (lad as any).stolenGoldId, width: 12, height: 6, color: 0xffd700 });
+            if (obj) obj._droppedByLad = true;
           }
         }
       }

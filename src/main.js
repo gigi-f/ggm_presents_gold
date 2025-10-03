@@ -576,16 +576,18 @@ export class MainScene extends Phaser.Scene {
       // Update HUD
       try { this.scene.get(SCENES.UI)?.updateGoldIngots?.(this.goldIngotsCount, this.goldGoal); } catch {}
       console.log(`Collected GOLD ingot ${id || ''} -> ${this.goldIngotsCount}/${this.goldGoal}`);
-      // Spawn a Lad on a random perimeter wall cell
-      try {
-        const edgeCells = Array.from(getEdgeEntranceCells(this));
-        if (edgeCells.length > 0) {
-          const idx = Math.floor(Math.random() * edgeCells.length);
-          const [gx, gy] = edgeCells[idx].split(',').map(Number);
-          const { x, y } = gridToWorld(this, gx, gy);
-          createEnemy(this, 'lad', x, y, { sprintTarget: { x: this.player.x, y: this.player.y } });
-        }
-      } catch (e) { console.warn('Failed to spawn Lad:', e); }
+      // Spawn a Lad on a random perimeter wall cell (not if this gold was dropped by a Lad)
+      if (!gold._droppedByLad) {
+        try {
+          const edgeCells = Array.from(getEdgeEntranceCells(this));
+          if (edgeCells.length > 0) {
+            const idx = Math.floor(Math.random() * edgeCells.length);
+            const [gx, gy] = edgeCells[idx].split(',').map(Number);
+            const { x, y } = gridToWorld(this, gx, gy);
+            createEnemy(this, 'lad', x, y, { sprintTarget: { x: this.player.x, y: this.player.y } });
+          }
+        } catch (e) { console.warn('Failed to spawn Lad:', e); }
+      }
       // Win check
       if (this.goldIngotsCount >= (this.goldGoal || 11)) {
         this.showWinModal?.();
